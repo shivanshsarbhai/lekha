@@ -1,6 +1,10 @@
 spring:
   application:
     name: lekha-backend
+  datasource:
+    url: jdbc:postgresql://localhost:15432/lekha
+    username: lekha
+    password: ${LEKHA_DB_PASSWORD}
 
 server:
   port: 8080
