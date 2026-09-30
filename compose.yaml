@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: lekha
+      POSTGRES_USER: lekha
+      POSTGRES_PASSWORD: ${LEKHA_DB_PASSWORD:?Set LEKHA_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - lekha-pgdata:/var/lib/postgresql
+
+volumes:
+  lekha-pgdata:
