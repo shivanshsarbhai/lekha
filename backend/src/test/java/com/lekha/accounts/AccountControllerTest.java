@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -90,6 +91,43 @@ class AccountControllerTest {
 				.content("""
 						{"nickname": "Paytm Wallet", "type": "BANK", "institution": "PAYTM", "last4": null}
 						"""))
+				.hasStatus(HttpStatus.BAD_REQUEST);
+	}
+
+	@Test
+	void getAccountReturnsTheAccountWhenItExists() {
+		UUID id = UUID.fromString("44444444-4444-4444-4444-444444444444");
+		Account hdfc = new Account(id, "HDFC Salary", AccountType.BANK, Institution.HDFC, "1234",
+				Instant.parse("2026-01-01T10:00:00Z"));
+		given(service.findAccount(id)).willReturn(Optional.of(hdfc));
+
+		assertThat(mvc.get().uri("/api/v1/accounts/{id}", id))
+				.hasStatusOk()
+				.bodyJson()
+				.isStrictlyEqualTo("""
+						{
+						  "id": "44444444-4444-4444-4444-444444444444",
+						  "nickname": "HDFC Salary",
+						  "type": "BANK",
+						  "institution": "HDFC",
+						  "last4": "1234",
+						  "createdAt": "2026-01-01T10:00:00Z"
+						}
+						""");
+	}
+
+	@Test
+	void getAccountReturns404WhenItDoesNotExist() {
+		UUID id = UUID.fromString("55555555-5555-5555-5555-555555555555");
+		given(service.findAccount(id)).willReturn(Optional.empty());
+
+		assertThat(mvc.get().uri("/api/v1/accounts/{id}", id))
+				.hasStatus(HttpStatus.NOT_FOUND);
+	}
+
+	@Test
+	void getAccountReturns400WhenIdIsNotAUuid() {
+		assertThat(mvc.get().uri("/api/v1/accounts/not-a-uuid"))
 				.hasStatus(HttpStatus.BAD_REQUEST);
 	}
 

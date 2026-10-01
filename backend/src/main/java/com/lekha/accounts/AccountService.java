@@ -1,6 +1,8 @@
 package com.lekha.accounts;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DuplicateKeyException;
@@ -17,6 +19,10 @@ class AccountService {
 
 	List<Account> listAccounts() {
 		return repository.findAll();
+	}
+
+	Optional<Account> findAccount(UUID id) {
+		return repository.findById(id);
 	}
 
 	Account createAccount(String nickname, AccountType type, Institution institution, @Nullable String last4) {
