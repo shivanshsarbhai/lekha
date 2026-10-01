@@ -85,6 +85,22 @@ class AccountControllerTest {
 	}
 
 	@Test
+	void createAccountReturns409WhenTheNicknameIsTaken() {
+		given(service.createAccount("HDFC Salary", AccountType.BANK, Institution.HDFC, null))
+			.willThrow(new DuplicateAccountNicknameException("HDFC Salary", new RuntimeException("duplicate key")));
+
+		assertThat(mvc.post().uri("/api/v1/accounts")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"nickname": "HDFC Salary", "type": "BANK", "institution": "HDFC", "last4": null}
+						"""))
+				.hasStatus(HttpStatus.CONFLICT)
+				.bodyJson()
+				.extractingPath("$.detail")
+				.isEqualTo("You already have an account called \"HDFC Salary\"");
+	}
+
+	@Test
 	void createAccountRejectsUnknownInstitutionWith400() {
 		assertThat(mvc.post().uri("/api/v1/accounts")
 				.contentType(MediaType.APPLICATION_JSON)
