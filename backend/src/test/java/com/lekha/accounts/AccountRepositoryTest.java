@@ -75,10 +75,8 @@ class AccountRepositoryTest {
 	}
 
 	@Test
-	void insertRejectsLast4ThatIsNotFourDigits() {
-		Account invalid = Account.create("Bad Card", AccountType.CREDIT_CARD, Institution.HDFC, "12ab");
-
-		assertThatThrownBy(() -> repository.insert(invalid))
+	void databaseRejectsLast4ThatIsNotFourDigits() {
+		assertThatThrownBy(() -> insertAccount("Bad Card", "CREDIT_CARD", "HDFC", "12ab", "2026-03-01T10:00:00Z"))
 				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("accounts_last4_check");
 	}

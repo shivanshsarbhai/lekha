@@ -1,5 +1,8 @@
 package com.lekha.accounts;
 
+import static com.lekha.accounts.AccountConstants.LAST4_PATTERN;
+import static com.lekha.accounts.AccountConstants.MAX_NICKNAME_LENGTH;
+
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
@@ -24,6 +27,25 @@ public record Account(
 		Objects.requireNonNull(type, "type");
 		Objects.requireNonNull(institution, "institution");
 		Objects.requireNonNull(createdAt, "createdAt");
+
+		nickname = nickname.strip();
+		if (nickname.isEmpty()) {
+			throw new IllegalArgumentException("Nickname must not be blank");
+		}
+		if (nickname.length() > MAX_NICKNAME_LENGTH) {
+			throw new IllegalArgumentException("Nickname must be at most " + MAX_NICKNAME_LENGTH + " characters");
+		}
+
+		if (last4 != null) {
+			last4 = last4.strip();
+			if (last4.isEmpty()) {
+				last4 = null;
+			}
+			else if (!LAST4_PATTERN.matcher(last4).matches()) {
+				throw new IllegalArgumentException("Last 4 digits must be exactly 4 digits");
+			}
+		}
+
 		createdAt = createdAt.truncatedTo(ChronoUnit.MICROS);
 	}
 

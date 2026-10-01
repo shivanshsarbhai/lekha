@@ -19,7 +19,7 @@ class AccountService {
 			repository.insert(account);
 		}
 		catch (DuplicateKeyException ex) {
-			throw new DuplicateAccountNicknameException(nickname, ex);
+			throw new DuplicateAccountNicknameException(account.nickname(), ex);
 		}
 		return account;
 	}
