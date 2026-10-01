@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -58,6 +59,23 @@ class TransactionRepository {
 				ORDER BY transaction_date, created_at, id
 				""")
 				.param("accountId", accountId)
+				.query(TransactionRepository::mapRow)
+				.list();
+	}
+
+	/** Transactions dated from {@code from} to {@code to}, both inclusive, newest first. A null account means all. */
+	List<Transaction> findBetween(@Nullable UUID accountId, LocalDate from, LocalDate to) {
+		return jdbc.sql("""
+				SELECT id, account_id, transaction_date, settlement_date, description, amount,
+				       balance_after, payment_mode, metadata, created_at
+				FROM transactions
+				WHERE (CAST(:accountId AS uuid) IS NULL OR account_id = :accountId)
+				  AND transaction_date BETWEEN :from AND :to
+				ORDER BY transaction_date DESC, created_at DESC, id DESC
+				""")
+				.param("accountId", accountId)
+				.param("from", from)
+				.param("to", to)
 				.query(TransactionRepository::mapRow)
 				.list();
 	}

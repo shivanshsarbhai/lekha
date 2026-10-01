@@ -70,6 +70,29 @@ class TransactionRepositoryTest {
 	}
 
 	@Test
+	void findBetweenReturnsEveryAccountInTheRangeNewestFirst() {
+		repository.insert(transaction(hdfc, LocalDate.of(2026, 8, 31), "UPI-AUGUST", "-100.00"));
+		repository.insert(transaction(hdfc, LocalDate.of(2026, 9, 1), "NEFT CR-SALARY", "150000.00"));
+		repository.insert(transaction(scapia, LocalDate.of(2026, 9, 15), "AMAZON", "-2000.00"));
+		repository.insert(transaction(hdfc, LocalDate.of(2026, 9, 30), "UPI-RENT", "-35000.00"));
+		repository.insert(transaction(hdfc, LocalDate.of(2026, 10, 1), "UPI-OCTOBER", "-200.00"));
+
+		assertThat(repository.findBetween(null, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30)))
+				.extracting(Transaction::description)
+				.containsExactly("UPI-RENT", "AMAZON", "NEFT CR-SALARY");
+	}
+
+	@Test
+	void findBetweenCanBeLimitedToOneAccount() {
+		repository.insert(transaction(hdfc, LocalDate.of(2026, 9, 1), "NEFT CR-SALARY", "150000.00"));
+		repository.insert(transaction(scapia, LocalDate.of(2026, 9, 15), "AMAZON", "-2000.00"));
+
+		assertThat(repository.findBetween(scapia, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30)))
+				.extracting(Transaction::description)
+				.containsExactly("AMAZON");
+	}
+
+	@Test
 	void insertRejectsTransactionForUnknownAccount() {
 		Transaction orphan = transaction(UUID.randomUUID(), LocalDate.of(2026, 9, 1), "UPI-SWIGGY", "-450.00");
 
