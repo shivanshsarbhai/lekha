@@ -27,16 +27,16 @@ class StatementImportService {
 	}
 
 	/** Parses the statement fully before saving anything, so a bad file leaves the database untouched. */
-	List<Transaction> importStatement(UUID accountId, InputStream file) {
+	StatementImport importStatement(UUID accountId, InputStream file) {
 		Account account = accounts.findAccount(accountId).orElseThrow(() -> new AccountNotFoundException(accountId));
 		StatementParser parser = parsers.stream()
 			.filter(candidate -> candidate.supports(account.institution(), account.type()))
 			.findFirst()
 			.orElseThrow(() -> new UnsupportedAccountException(account));
 
-		List<Transaction> imported = parser.parse(file).stream().map(entry -> toTransaction(accountId, entry)).toList();
-		transactions.recordAll(imported);
-		return imported;
+		List<Transaction> parsed = parser.parse(file).stream().map(entry -> toTransaction(accountId, entry)).toList();
+		List<Transaction> imported = transactions.recordNew(parsed);
+		return new StatementImport(imported, parsed.size() - imported.size());
 	}
 
 	private static Transaction toTransaction(UUID accountId, StatementEntry entry) {

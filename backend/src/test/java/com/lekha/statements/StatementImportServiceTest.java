@@ -48,7 +48,9 @@ class StatementImportServiceTest {
 		StatementImportService service = service(new FakeParser(Institution.SBI, AccountType.BANK, List.of()),
 				new FakeParser(Institution.HDFC, AccountType.BANK, List.of(SALARY, SWIGGY)));
 
-		List<Transaction> imported = service.importStatement(hdfcBank.id(), emptyFile());
+		given(transactions.recordNew(any())).willAnswer(call -> call.getArgument(0));
+
+		List<Transaction> imported = service.importStatement(hdfcBank.id(), emptyFile()).imported();
 
 		assertThat(imported)
 				.extracting(Transaction::accountId, Transaction::transactionDate, Transaction::settlementDate,
@@ -59,7 +61,20 @@ class StatementImportServiceTest {
 								SALARY.amount(), SALARY.balanceAfter(), SALARY.paymentMode(), SALARY.metadata()),
 						tuple(hdfcBank.id(), SWIGGY.transactionDate(), null, SWIGGY.description(), SWIGGY.amount(),
 								SWIGGY.balanceAfter(), SWIGGY.paymentMode(), Map.of()));
-		then(transactions).should().recordAll(imported);
+		then(transactions).should().recordNew(imported);
+	}
+
+	@Test
+	void reportsHowManyTransactionsWereAlreadyStored() {
+		given(accounts.findAccount(hdfcBank.id())).willReturn(Optional.of(hdfcBank));
+		StatementImportService service = service(
+				new FakeParser(Institution.HDFC, AccountType.BANK, List.of(SALARY, SWIGGY)));
+		given(transactions.recordNew(any())).willAnswer(call -> call.<List<Transaction>>getArgument(0).subList(1, 2));
+
+		StatementImport result = service.importStatement(hdfcBank.id(), emptyFile());
+
+		assertThat(result.imported()).extracting(Transaction::description).containsExactly("UPI-SWIGGY");
+		assertThat(result.skipped()).isEqualTo(1);
 	}
 
 	@Test
