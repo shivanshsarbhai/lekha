@@ -1,3 +1,7 @@
+/**
+ * A failed API call. `message` is the server's own explanation (ProblemDetail `detail`) when it sent one, so it can
+ * be shown to the user as-is. `status` is 0 when the server could not be reached at all.
+ */
 export class ApiError extends Error {
   readonly status: number;
 
@@ -8,29 +12,63 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`/api/v1${path}`, {
-    headers: { Accept: "application/json" },
-    ...(signal ? { signal } : {}),
-  });
+interface RequestOptions {
+  body?: BodyInit;
+  contentType?: string;
+  signal?: AbortSignal | undefined;
+}
+
+async function request<T>(method: "GET" | "POST", path: string, options: RequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (options.contentType !== undefined) {
+    headers["Content-Type"] = options.contentType;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`/api/v1${path}`, {
+      method,
+      headers,
+      ...(options.body !== undefined ? { body: options.body } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  } catch (error: unknown) {
+    if (options.signal?.aborted) throw error;
+    throw new ApiError(0, "Could not reach the server. Is the backend running?");
+  }
 
   if (!response.ok) {
-    throw new ApiError(response.status, `GET ${path} failed with ${response.status}`);
+    throw await toApiError(response, `${method} ${path} failed with HTTP ${response.status}`);
   }
 
   return (await response.json()) as T;
 }
 
-export async function apiPost<TBody, TResponse>(path: string, body: TBody): Promise<TResponse> {
-  const response = await fetch(`/api/v1${path}`, {
-    method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new ApiError(response.status, `POST ${path} failed with ${response.status}`);
+/** Errors from our ApiExceptionHandler are ProblemDetail JSON; anything else falls back to a generic message. */
+async function toApiError(response: Response, fallback: string): Promise<ApiError> {
+  try {
+    const problem = (await response.json()) as { detail?: unknown };
+    if (typeof problem.detail === "string" && problem.detail !== "") {
+      return new ApiError(response.status, problem.detail);
+    }
+  } catch {
+    // Not JSON, e.g. the dev proxy's empty 500 when the backend is down.
   }
+  return new ApiError(response.status, fallback);
+}
 
-  return (await response.json()) as TResponse;
+export function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return request<T>("GET", path, { signal });
+}
+
+export function apiPost<TBody, TResponse>(path: string, body: TBody): Promise<TResponse> {
+  return request<TResponse>("POST", path, { body: JSON.stringify(body), contentType: "application/json" });
+}
+
+/**
+ * Sends a multipart/form-data body, e.g. a file upload. Content-Type is deliberately not set: the browser must
+ * write it itself, because only it knows the random boundary string that separates the parts.
+ */
+export function apiPostForm<TResponse>(path: string, form: FormData): Promise<TResponse> {
+  return request<TResponse>("POST", path, { body: form });
 }

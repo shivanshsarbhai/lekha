@@ -6,23 +6,23 @@ export function SystemStatus() {
   switch (state.status) {
     case "loading":
       return (
-        <span className="pill">
-          <span className="pill__dot" /> Connecting…
+        <span className="system-status">
+          <span className="status-dot status-dot--pulse" /> Connecting…
         </span>
       );
     case "error":
       return (
-        <span className="pill pill--error" title={state.message}>
-          <span className="pill__dot" /> Backend offline
+        <span className="system-status system-status--error" title={state.message}>
+          <span className="status-dot status-dot--error" /> Backend offline
         </span>
       );
     case "success":
       return (
         <span
-          className="pill pill--ok"
+          className="system-status"
           title={`Server time ${new Date(state.data.serverTime).toLocaleString()}`}
         >
-          <span className="pill__dot" /> API v{state.data.version}
+          <span className="status-dot status-dot--ok" /> Connected · v{state.data.version}
         </span>
       );
   }
