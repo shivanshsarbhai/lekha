@@ -3,6 +3,7 @@ package com.lekha.accounts;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,6 +27,20 @@ class AccountRepository {
 				""")
 				.query(AccountRepository::mapRow)
 				.list();
+	}
+
+	void insert(Account account) {
+		jdbc.sql("""
+				INSERT INTO accounts (id, nickname, type, institution, last4, created_at)
+				VALUES (:id, :nickname, :type, :institution, :last4, :createdAt)
+				""")
+				.param("id", account.id())
+				.param("nickname", account.nickname())
+				.param("type", account.type().name())
+				.param("institution", account.institution().name())
+				.param("last4", account.last4())
+				.param("createdAt", OffsetDateTime.ofInstant(account.createdAt(), ZoneOffset.UTC))
+				.update();
 	}
 
 	private static Account mapRow(ResultSet rs, int rowNum) throws SQLException {
