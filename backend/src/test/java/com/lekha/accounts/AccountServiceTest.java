@@ -3,6 +3,8 @@ package com.lekha.accounts;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.UUID;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest;
@@ -36,6 +38,17 @@ class AccountServiceTest {
 				.isInstanceOf(DuplicateAccountNicknameException.class)
 				.hasMessage("You already have an account called \"hdfc salary\"")
 				.hasCauseInstanceOf(DuplicateKeyException.class);
+	}
+
+	@Test
+	void getAccountReturnsTheAccountOrThrowsWhenItDoesNotExist() {
+		Account created = service.createAccount("HDFC Salary", AccountType.BANK, Institution.HDFC, null);
+		UUID unknown = UUID.randomUUID();
+
+		assertThat(service.getAccount(created.id())).isEqualTo(created);
+		assertThatThrownBy(() -> service.getAccount(unknown))
+				.isInstanceOf(AccountNotFoundException.class)
+				.hasMessage("No account with id " + unknown);
 	}
 
 }

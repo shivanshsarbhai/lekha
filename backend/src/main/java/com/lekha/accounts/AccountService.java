@@ -25,6 +25,11 @@ public class AccountService {
 		return repository.findById(id);
 	}
 
+	/** For callers where a missing account is an error, not an expected answer. */
+	public Account getAccount(UUID id) {
+		return findAccount(id).orElseThrow(() -> new AccountNotFoundException(id));
+	}
+
 	Account createAccount(String nickname, AccountType type, Institution institution, @Nullable String last4) {
 		Account account = Account.create(nickname, type, institution, last4);
 		try {

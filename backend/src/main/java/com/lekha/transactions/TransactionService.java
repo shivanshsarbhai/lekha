@@ -7,18 +7,47 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.lekha.accounts.AccountService;
+
 @Service
 public class TransactionService {
 
+	private static final BigDecimal ZERO_MONEY = new BigDecimal("0.00");
+
 	private final TransactionRepository repository;
 
-	TransactionService(TransactionRepository repository) {
+	private final AccountService accounts;
+
+	TransactionService(TransactionRepository repository, AccountService accounts) {
 		this.repository = repository;
+		this.accounts = accounts;
+	}
+
+	/**
+	 * Transactions dated from {@code from} to {@code to}, both inclusive, for one account or all of them. The range is
+	 * capped at a year so no request can load the whole history by accident.
+	 */
+	TransactionList list(@Nullable UUID accountId, LocalDate from, LocalDate to) {
+		if (from.isAfter(to)) {
+			throw new InvalidDateRangeException("\"from\" (" + from + ") must not be after \"to\" (" + to + ")");
+		}
+		if (to.isAfter(from.plusYears(1).minusDays(1))) {
+			throw new InvalidDateRangeException("The date range must be at most 1 year");
+		}
+		if (accountId != null) {
+			accounts.getAccount(accountId);
+		}
+
+		List<Transaction> transactions = repository.findBetween(accountId, from, to);
+		BigDecimal moneyIn = sum(transactions, amount -> amount.signum() > 0);
+		BigDecimal moneyOut = sum(transactions, amount -> amount.signum() < 0);
+		return new TransactionList(transactions, moneyIn, moneyOut, moneyIn.add(moneyOut));
 	}
 
 	/**
@@ -46,6 +75,10 @@ public class TransactionService {
 			}
 		}
 		return saved;
+	}
+
+	private static BigDecimal sum(List<Transaction> transactions, Predicate<BigDecimal> include) {
+		return transactions.stream().map(Transaction::amount).filter(include).reduce(ZERO_MONEY, BigDecimal::add);
 	}
 
 	/**

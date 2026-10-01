@@ -28,7 +28,7 @@ class StatementImportService {
 
 	/** Parses the statement fully before saving anything, so a bad file leaves the database untouched. */
 	StatementImport importStatement(UUID accountId, InputStream file) {
-		Account account = accounts.findAccount(accountId).orElseThrow(() -> new AccountNotFoundException(accountId));
+		Account account = accounts.getAccount(accountId);
 		StatementParser parser = parsers.stream()
 			.filter(candidate -> candidate.supports(account.institution(), account.type()))
 			.findFirst()

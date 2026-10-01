@@ -20,6 +20,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
 import com.lekha.accounts.Account;
+import com.lekha.accounts.AccountNotFoundException;
 import com.lekha.accounts.AccountType;
 import com.lekha.accounts.Institution;
 import com.lekha.transactions.PaymentMode;

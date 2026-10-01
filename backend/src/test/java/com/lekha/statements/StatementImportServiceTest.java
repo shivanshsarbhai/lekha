@@ -14,12 +14,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
 import com.lekha.accounts.Account;
+import com.lekha.accounts.AccountNotFoundException;
 import com.lekha.accounts.AccountService;
 import com.lekha.accounts.AccountType;
 import com.lekha.accounts.Institution;
@@ -44,7 +44,7 @@ class StatementImportServiceTest {
 
 	@Test
 	void importsWithTheParserThatSupportsTheAccount() {
-		given(accounts.findAccount(hdfcBank.id())).willReturn(Optional.of(hdfcBank));
+		given(accounts.getAccount(hdfcBank.id())).willReturn(hdfcBank);
 		StatementImportService service = service(new FakeParser(Institution.SBI, AccountType.BANK, List.of()),
 				new FakeParser(Institution.HDFC, AccountType.BANK, List.of(SALARY, SWIGGY)));
 
@@ -66,7 +66,7 @@ class StatementImportServiceTest {
 
 	@Test
 	void reportsHowManyTransactionsWereAlreadyStored() {
-		given(accounts.findAccount(hdfcBank.id())).willReturn(Optional.of(hdfcBank));
+		given(accounts.getAccount(hdfcBank.id())).willReturn(hdfcBank);
 		StatementImportService service = service(
 				new FakeParser(Institution.HDFC, AccountType.BANK, List.of(SALARY, SWIGGY)));
 		given(transactions.recordNew(any())).willAnswer(call -> call.<List<Transaction>>getArgument(0).subList(1, 2));
@@ -78,9 +78,9 @@ class StatementImportServiceTest {
 	}
 
 	@Test
-	void rejectsAnUnknownAccount() {
+	void savesNothingForAnUnknownAccount() {
 		UUID unknown = UUID.randomUUID();
-		given(accounts.findAccount(unknown)).willReturn(Optional.empty());
+		given(accounts.getAccount(unknown)).willThrow(new AccountNotFoundException(unknown));
 		StatementImportService service = service(new FakeParser(Institution.HDFC, AccountType.BANK, List.of()));
 
 		assertThatThrownBy(() -> service.importStatement(unknown, emptyFile()))
@@ -92,7 +92,7 @@ class StatementImportServiceTest {
 	@Test
 	void rejectsAnAccountNoParserSupports() {
 		Account card = Account.create("HDFC Card", AccountType.CREDIT_CARD, Institution.HDFC, null);
-		given(accounts.findAccount(card.id())).willReturn(Optional.of(card));
+		given(accounts.getAccount(card.id())).willReturn(card);
 		StatementImportService service = service(new FakeParser(Institution.HDFC, AccountType.BANK, List.of()));
 
 		assertThatThrownBy(() -> service.importStatement(card.id(), emptyFile()))
@@ -103,7 +103,7 @@ class StatementImportServiceTest {
 
 	@Test
 	void savesNothingWhenTheFileCannotBeParsed() {
-		given(accounts.findAccount(hdfcBank.id())).willReturn(Optional.of(hdfcBank));
+		given(accounts.getAccount(hdfcBank.id())).willReturn(hdfcBank);
 		StatementParser broken = mock(StatementParser.class);
 		given(broken.supports(Institution.HDFC, AccountType.BANK)).willReturn(true);
 		given(broken.parse(any())).willThrow(new StatementFormatException("Could not read the file as a PDF"));

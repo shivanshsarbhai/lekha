@@ -1,10 +1,10 @@
-package com.lekha.statements;
+package com.lekha.accounts;
 
 import java.util.UUID;
 
 public class AccountNotFoundException extends RuntimeException {
 
-	AccountNotFoundException(UUID accountId) {
+	public AccountNotFoundException(UUID accountId) {
 		super("No account with id " + accountId);
 	}
 

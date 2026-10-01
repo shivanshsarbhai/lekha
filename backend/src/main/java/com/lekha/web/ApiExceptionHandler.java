@@ -5,14 +5,20 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.lekha.accounts.AccountNotFoundException;
 import com.lekha.accounts.DuplicateAccountNicknameException;
-import com.lekha.statements.AccountNotFoundException;
 import com.lekha.statements.StatementFormatException;
 import com.lekha.statements.UnsupportedAccountException;
+import com.lekha.transactions.InvalidDateRangeException;
 
 /** Turns the exceptions our features throw on purpose into HTTP responses whose message the user can act on. */
 @RestControllerAdvice
 class ApiExceptionHandler {
+
+	@ExceptionHandler(InvalidDateRangeException.class)
+	ProblemDetail badRequest(RuntimeException ex) {
+		return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+	}
 
 	@ExceptionHandler(DuplicateAccountNicknameException.class)
 	ProblemDetail conflict(RuntimeException ex) {
