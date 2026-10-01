@@ -1,10 +1,12 @@
+import { Navigate, NavLink, Route, Routes } from "react-router";
 import { Icon, type IconName } from "./components/Icon";
 import { AccountsPage } from "./features/accounts/AccountsPage";
 import { SystemStatus } from "./features/system/SystemStatus";
+import { TransactionsPage } from "./features/transactions/TransactionsPage";
 
-const NAV: { label: string; icon: IconName; active?: boolean }[] = [
-  { label: "Accounts", icon: "wallet", active: true },
-  { label: "Transactions", icon: "list" },
+const NAV: { label: string; icon: IconName; to?: string }[] = [
+  { label: "Accounts", icon: "wallet", to: "/accounts" },
+  { label: "Transactions", icon: "list", to: "/transactions" },
   { label: "Insights", icon: "chart" },
   { label: "Splits", icon: "split" },
 ];
@@ -24,19 +26,24 @@ export function App() {
         </div>
 
         <nav className="nav" aria-label="Main">
-          {NAV.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              className={`nav__item${item.active ? " nav__item--active" : ""}`}
-              aria-current={item.active ? "page" : undefined}
-              disabled={!item.active}
-            >
-              <Icon name={item.icon} />
-              <span>{item.label}</span>
-              {!item.active && <span className="nav__soon">Soon</span>}
-            </button>
-          ))}
+          {NAV.map((item) =>
+            item.to ? (
+              <NavLink
+                key={item.label}
+                to={item.to}
+                className={({ isActive }) => `nav__item${isActive ? " nav__item--active" : ""}`}
+              >
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+              </NavLink>
+            ) : (
+              <span key={item.label} className="nav__item nav__item--disabled" aria-disabled="true">
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+                <span className="nav__soon">Soon</span>
+              </span>
+            ),
+          )}
         </nav>
 
         <div className="sidebar__footer">
@@ -45,7 +52,12 @@ export function App() {
       </aside>
 
       <main className="main">
-        <AccountsPage />
+        <Routes>
+          <Route path="/" element={<Navigate to="/accounts" replace />} />
+          <Route path="/accounts" element={<AccountsPage />} />
+          <Route path="/transactions" element={<TransactionsPage />} />
+          <Route path="*" element={<Navigate to="/accounts" replace />} />
+        </Routes>
       </main>
     </div>
   );

@@ -1,24 +1,15 @@
 import { useRef, useState, type DragEvent } from "react";
+import { Link } from "react-router";
 import type { Account } from "../../api/accounts";
 import type { StatementImport } from "../../api/statements";
-import type { PaymentMode, Transaction } from "../../api/transactions";
+import type { Transaction } from "../../api/transactions";
 import { Icon } from "../../components/Icon";
 import { formatFileSize, formatLocalDate, formatMoney, formatSignedMoney, sumMoney } from "../../lib/format";
+import { MODE_LABELS } from "../transactions/labels";
 import { useStatementUpload } from "./useStatementUpload";
 
 /** Matches spring.servlet.multipart.max-file-size, so oversized files fail fast without uploading. */
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-
-const MODE_LABELS: Record<PaymentMode, string> = {
-  UPI: "UPI",
-  CARD: "Card",
-  NEFT: "NEFT",
-  IMPS: "IMPS",
-  RTGS: "RTGS",
-  ATM: "ATM",
-  CHEQUE: "Cheque",
-  OTHER: "Other",
-};
 
 interface ImportStatementProps {
   account: Account;
@@ -82,7 +73,15 @@ export function ImportStatement({ account, onImported, onDone }: ImportStatement
       );
 
     case "done":
-      return <ImportResult result={state.result} fileName={state.fileName} onAnother={reset} onDone={onDone} />;
+      return (
+        <ImportResult
+          accountId={account.id}
+          result={state.result}
+          fileName={state.fileName}
+          onAnother={reset}
+          onDone={onDone}
+        />
+      );
   }
 }
 
@@ -148,17 +147,21 @@ function Dropzone({ onFile, error }: { onFile: (file: File) => void; error: stri
 }
 
 interface ImportResultProps {
+  accountId: string;
   result: StatementImport;
   fileName: string;
   onAnother: () => void;
   onDone: () => void;
 }
 
-function ImportResult({ result, fileName, onAnother, onDone }: ImportResultProps) {
+function ImportResult({ accountId, result, fileName, onAnother, onDone }: ImportResultProps) {
   const amounts = result.imported.map((transaction) => transaction.amount);
   const moneyIn = sumMoney(amounts.filter((amount) => amount > 0));
   const moneyOut = sumMoney(amounts.filter((amount) => amount < 0));
   const nothingNew = result.imported.length === 0;
+  const latestMonth = result.imported
+    .map((transaction) => transaction.transactionDate.slice(0, 7))
+    .reduce<string | null>((latest, month) => (latest === null || month > latest ? month : latest), null);
 
   return (
     <div className="import-result">
@@ -205,9 +208,15 @@ function ImportResult({ result, fileName, onAnother, onDone }: ImportResultProps
         <button type="button" className="button button--ghost" onClick={onAnother}>
           <Icon name="upload" /> Import another
         </button>
-        <button type="button" className="button" onClick={onDone}>
-          Done
-        </button>
+        {latestMonth !== null ? (
+          <Link className="button" to={`/transactions?account=${accountId}&month=${latestMonth}`}>
+            View in Transactions
+          </Link>
+        ) : (
+          <button type="button" className="button" onClick={onDone}>
+            Done
+          </button>
+        )}
       </div>
     </div>
   );

@@ -13,6 +13,9 @@ const PATHS = {
   wallet: "M20 7V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2h13a2 2 0 002-2v-1M20 7h-5a3 3 0 000 6h5V7z",
   arrowDown: "M12 5v14m0 0l-6-6m6 6l6-6",
   arrowUp: "M12 19V5m0 0l-6 6m6-6l6 6",
+  chevronLeft: "M15 6l-6 6 6 6",
+  chevronRight: "M9 6l6 6-6 6",
+  info: "M12 21a9 9 0 100-18 9 9 0 000 18zm0-10v5m0-8.5v.01",
   refresh: "M4 4v6h6M20 20v-6h-6M5.5 15a7 7 0 0011.9 2.5M18.5 9A7 7 0 006.6 6.5",
 } as const;
 
