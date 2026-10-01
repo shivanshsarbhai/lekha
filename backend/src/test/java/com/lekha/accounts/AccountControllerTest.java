@@ -10,6 +10,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
@@ -53,6 +55,42 @@ class AccountControllerTest {
 						  }
 						]
 						""");
+	}
+
+	@Test
+	void createAccountReturns201WithLocationAndTheCreatedAccount() {
+		Account created = new Account(UUID.fromString("33333333-3333-3333-3333-333333333333"), "SBI Savings",
+				AccountType.BANK, Institution.SBI, "9876", Instant.parse("2026-03-01T10:00:00Z"));
+		given(service.createAccount("SBI Savings", AccountType.BANK, Institution.SBI, "9876")).willReturn(created);
+
+		assertThat(mvc.post().uri("/api/v1/accounts")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"nickname": "SBI Savings", "type": "BANK", "institution": "SBI", "last4": "9876"}
+						"""))
+				.hasStatus(HttpStatus.CREATED)
+				.hasHeader("Location", "/api/v1/accounts/33333333-3333-3333-3333-333333333333")
+				.bodyJson()
+				.isStrictlyEqualTo("""
+						{
+						  "id": "33333333-3333-3333-3333-333333333333",
+						  "nickname": "SBI Savings",
+						  "type": "BANK",
+						  "institution": "SBI",
+						  "last4": "9876",
+						  "createdAt": "2026-03-01T10:00:00Z"
+						}
+						""");
+	}
+
+	@Test
+	void createAccountRejectsUnknownInstitutionWith400() {
+		assertThat(mvc.post().uri("/api/v1/accounts")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"nickname": "Paytm Wallet", "type": "BANK", "institution": "PAYTM", "last4": null}
+						"""))
+				.hasStatus(HttpStatus.BAD_REQUEST);
 	}
 
 	@Test
