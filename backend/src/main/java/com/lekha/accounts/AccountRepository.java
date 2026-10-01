@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -27,6 +28,17 @@ class AccountRepository {
 				""")
 				.query(AccountRepository::mapRow)
 				.list();
+	}
+
+	Optional<Account> findById(UUID id) {
+		return jdbc.sql("""
+				SELECT id, nickname, type, institution, last4, created_at
+				FROM accounts
+				WHERE id = :id
+				""")
+				.param("id", id)
+				.query(AccountRepository::mapRow)
+				.optional();
 	}
 
 	void insert(Account account) {

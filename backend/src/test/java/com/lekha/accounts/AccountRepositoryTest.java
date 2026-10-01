@@ -82,6 +82,23 @@ class AccountRepositoryTest {
 				.hasMessageContaining("accounts_last4_check");
 	}
 
+	@Test
+	void findByIdReturnsTheMatchingAccount() {
+		Account hdfc = Account.create("HDFC Salary", AccountType.BANK, Institution.HDFC, "1234");
+		Account sbi = Account.create("SBI Savings", AccountType.BANK, Institution.SBI, "9876");
+		repository.insert(hdfc);
+		repository.insert(sbi);
+
+		assertThat(repository.findById(sbi.id())).contains(sbi);
+	}
+
+	@Test
+	void findByIdReturnsEmptyWhenNoAccountHasThatId() {
+		repository.insert(Account.create("HDFC Salary", AccountType.BANK, Institution.HDFC, "1234"));
+
+		assertThat(repository.findById(UUID.randomUUID())).isEmpty();
+	}
+
 	private void insertAccount(String nickname, String type, String institution, @Nullable String last4,
 			String createdAt) {
 		jdbc.sql("""
