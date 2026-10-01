@@ -9,7 +9,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 @Service
-class AccountService {
+public class AccountService {
 
 	private final AccountRepository repository;
 
@@ -21,7 +21,7 @@ class AccountService {
 		return repository.findAll();
 	}
 
-	Optional<Account> findAccount(UUID id) {
+	public Optional<Account> findAccount(UUID id) {
 		return repository.findById(id);
 	}
 
