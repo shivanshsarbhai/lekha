@@ -20,3 +20,17 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
 
   return (await response.json()) as T;
 }
+
+export async function apiPost<TBody, TResponse>(path: string, body: TBody): Promise<TResponse> {
+  const response = await fetch(`/api/v1${path}`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, `POST ${path} failed with ${response.status}`);
+  }
+
+  return (await response.json()) as TResponse;
+}

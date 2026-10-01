@@ -5,19 +5,25 @@ export function SystemStatus() {
 
   switch (state.status) {
     case "loading":
-      return <p className="status">Connecting to backend…</p>;
+      return (
+        <span className="pill">
+          <span className="pill__dot" /> Connecting…
+        </span>
+      );
     case "error":
       return (
-        <p className="status status--error">
-          Backend unreachable: {state.message}. Is <code>./gradlew bootRun</code> running?
-        </p>
+        <span className="pill pill--error" title={state.message}>
+          <span className="pill__dot" /> Backend offline
+        </span>
       );
     case "success":
       return (
-        <p className="status status--ok">
-          Connected to {state.data.name} API v{state.data.version} · server time{" "}
-          {new Date(state.data.serverTime).toLocaleString()}
-        </p>
+        <span
+          className="pill pill--ok"
+          title={`Server time ${new Date(state.data.serverTime).toLocaleString()}`}
+        >
+          <span className="pill__dot" /> API v{state.data.version}
+        </span>
       );
   }
 }
