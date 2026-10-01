@@ -29,6 +29,14 @@ public record Category(UUID id, @Nullable UUID parentId, String name, CategoryKi
 		createdAt = createdAt.truncatedTo(ChronoUnit.MICROS);
 	}
 
+	static Category create(@Nullable UUID parentId, String name, CategoryKind kind) {
+		return new Category(UUID.randomUUID(), parentId, name, kind, Instant.now());
+	}
+
+	Category withName(String newName) {
+		return new Category(id, parentId, newName, kind, createdAt);
+	}
+
 	boolean isTopLevel() {
 		return parentId == null;
 	}

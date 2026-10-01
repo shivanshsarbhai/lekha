@@ -7,6 +7,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.lekha.accounts.AccountNotFoundException;
 import com.lekha.accounts.DuplicateAccountNicknameException;
+import com.lekha.categories.CategoryInUseException;
+import com.lekha.categories.CategoryNotFoundException;
+import com.lekha.categories.DuplicateCategoryNameException;
+import com.lekha.categories.InvalidCategoryException;
 import com.lekha.statements.StatementFormatException;
 import com.lekha.statements.UnsupportedAccountException;
 import com.lekha.transactions.InvalidDateRangeException;
@@ -15,17 +19,18 @@ import com.lekha.transactions.InvalidDateRangeException;
 @RestControllerAdvice
 class ApiExceptionHandler {
 
-	@ExceptionHandler(InvalidDateRangeException.class)
+	@ExceptionHandler({ InvalidDateRangeException.class, InvalidCategoryException.class })
 	ProblemDetail badRequest(RuntimeException ex) {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
 	}
 
-	@ExceptionHandler(DuplicateAccountNicknameException.class)
+	@ExceptionHandler({ DuplicateAccountNicknameException.class, DuplicateCategoryNameException.class,
+			CategoryInUseException.class })
 	ProblemDetail conflict(RuntimeException ex) {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
 	}
 
-	@ExceptionHandler(AccountNotFoundException.class)
+	@ExceptionHandler({ AccountNotFoundException.class, CategoryNotFoundException.class })
 	ProblemDetail notFound(RuntimeException ex) {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
 	}
