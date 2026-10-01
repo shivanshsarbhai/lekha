@@ -6,3 +6,5 @@ CREATE TABLE accounts (
     last4       VARCHAR(4)   CHECK (last4 ~ '^[0-9]{4}$'),
     created_at  TIMESTAMPTZ  NOT NULL
 );
+
+CREATE UNIQUE INDEX accounts_nickname_unique ON accounts (lower(nickname));

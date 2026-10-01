@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import com.lekha.TestcontainersConfiguration;
@@ -80,6 +81,16 @@ class AccountRepositoryTest {
 		assertThatThrownBy(() -> repository.insert(invalid))
 				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("accounts_last4_check");
+	}
+
+	@Test
+	void insertRejectsNicknameThatDiffersOnlyInCase() {
+		repository.insert(Account.create("HDFC Salary", AccountType.BANK, Institution.HDFC, "1234"));
+		Account duplicate = Account.create("hdfc salary", AccountType.CREDIT_CARD, Institution.SBI, null);
+
+		assertThatThrownBy(() -> repository.insert(duplicate))
+				.isInstanceOf(DuplicateKeyException.class)
+				.hasMessageContaining("accounts_nickname_unique");
 	}
 
 	@Test
