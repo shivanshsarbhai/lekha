@@ -8,6 +8,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.jspecify.annotations.Nullable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
@@ -81,7 +82,13 @@ class CategoryService {
 			throw new CategoryInUseException(
 					"\"" + category.name() + "\" has sub-categories. Delete or rename those first.");
 		}
-		repository.delete(id);
+		try {
+			repository.delete(id);
+		}
+		catch (DataIntegrityViolationException ex) {
+			throw new CategoryInUseException(
+					"\"" + category.name() + "\" is used by classified transactions. Re-classify them first.");
+		}
 	}
 
 	/** Turns the record's own validation errors (blank or too-long name) into a 400 rather than a 500. */

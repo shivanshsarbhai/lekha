@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 import com.lekha.TestcontainersConfiguration;
 
@@ -24,6 +25,9 @@ class CategoryServiceTest {
 
 	@Autowired
 	private CategoryRepository repository;
+
+	@Autowired
+	private JdbcClient jdbc;
 
 	@Test
 	void treeGroupsKindsInOrderWithSubCategoriesUnderTheirParent() {
@@ -162,8 +166,35 @@ class CategoryServiceTest {
 	}
 
 	@Test
+	void deleteRefusesACategoryUsedByAnAllocation() {
+		UUID movies = id("Movies");
+		classifySomethingAs(movies);
+
+		assertThatThrownBy(() -> service.delete(movies)).isInstanceOf(CategoryInUseException.class)
+			.hasMessage("\"Movies\" is used by classified transactions. Re-classify them first.");
+	}
+
+	@Test
 	void deleteRejectsAnUnknownCategory() {
 		assertThatThrownBy(() -> service.delete(UUID.randomUUID())).isInstanceOf(CategoryNotFoundException.class);
+	}
+
+	/** Raw SQL, because accounts, transactions and allocations belong to other packages. */
+	private void classifySomethingAs(UUID categoryId) {
+		UUID account = UUID.randomUUID();
+		UUID transaction = UUID.randomUUID();
+		jdbc.sql("""
+				INSERT INTO accounts (id, nickname, type, institution, last4, created_at)
+				VALUES (:id, 'HDFC Salary', 'BANK', 'HDFC', NULL, now())
+				""").param("id", account).update();
+		jdbc.sql("""
+				INSERT INTO transactions (id, account_id, transaction_date, description, amount, metadata, created_at)
+				VALUES (:id, :account, DATE '2026-09-01', 'BOOKMYSHOW', -600.00, '{}'::jsonb, now())
+				""").param("id", transaction).param("account", account).update();
+		jdbc.sql("""
+				INSERT INTO allocations (id, transaction_id, kind, category_id, amount)
+				VALUES (:id, :transaction, 'EXPENSE', :category, -600.00)
+				""").param("id", UUID.randomUUID()).param("transaction", transaction).param("category", categoryId).update();
 	}
 
 	private Category find(String name) {

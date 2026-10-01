@@ -1,7 +1,6 @@
 package com.lekha.transactions;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -41,12 +40,12 @@ public record Transaction(
 			throw new IllegalArgumentException("Description must not be blank");
 		}
 
-		amount = toMoney(amount);
+		amount = Money.of(amount);
 		if (amount.signum() == 0) {
 			throw new IllegalArgumentException("Amount must not be zero");
 		}
 		if (balanceAfter != null) {
-			balanceAfter = toMoney(balanceAfter);
+			balanceAfter = Money.of(balanceAfter);
 		}
 
 		metadata = Map.copyOf(metadata);
@@ -59,15 +58,6 @@ public record Transaction(
 			@Nullable PaymentMode paymentMode, Map<String, String> metadata) {
 		return new Transaction(UUID.randomUUID(), accountId, transactionDate, settlementDate, description, amount,
 				balanceAfter, paymentMode, metadata, Instant.now());
-	}
-
-	private static BigDecimal toMoney(BigDecimal value) {
-		try {
-			return value.setScale(2, RoundingMode.UNNECESSARY);
-		}
-		catch (ArithmeticException ex) {
-			throw new IllegalArgumentException("Money must have at most 2 decimal places: " + value, ex);
-		}
 	}
 
 }
