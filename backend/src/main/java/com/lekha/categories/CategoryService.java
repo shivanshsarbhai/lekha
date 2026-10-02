@@ -3,6 +3,7 @@ package com.lekha.categories;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -13,12 +14,16 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 @Service
-class CategoryService {
+public class CategoryService {
 
 	private final CategoryRepository repository;
 
 	CategoryService(CategoryRepository repository) {
 		this.repository = repository;
+	}
+
+	public Optional<Category> findCategory(UUID id) {
+		return repository.findById(id);
 	}
 
 	/** Every category as a two-level tree: grouped by kind (expenses first), then alphabetical. */

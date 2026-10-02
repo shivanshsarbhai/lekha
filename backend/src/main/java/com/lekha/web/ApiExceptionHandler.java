@@ -13,13 +13,16 @@ import com.lekha.categories.DuplicateCategoryNameException;
 import com.lekha.categories.InvalidCategoryException;
 import com.lekha.statements.StatementFormatException;
 import com.lekha.statements.UnsupportedAccountException;
+import com.lekha.transactions.InvalidAllocationException;
 import com.lekha.transactions.InvalidDateRangeException;
+import com.lekha.transactions.TransactionNotFoundException;
 
 /** Turns the exceptions our features throw on purpose into HTTP responses whose message the user can act on. */
 @RestControllerAdvice
 class ApiExceptionHandler {
 
-	@ExceptionHandler({ InvalidDateRangeException.class, InvalidCategoryException.class })
+	@ExceptionHandler({ InvalidDateRangeException.class, InvalidCategoryException.class,
+			InvalidAllocationException.class })
 	ProblemDetail badRequest(RuntimeException ex) {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
 	}
@@ -30,7 +33,8 @@ class ApiExceptionHandler {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
 	}
 
-	@ExceptionHandler({ AccountNotFoundException.class, CategoryNotFoundException.class })
+	@ExceptionHandler({ AccountNotFoundException.class, CategoryNotFoundException.class,
+			TransactionNotFoundException.class })
 	ProblemDetail notFound(RuntimeException ex) {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
 	}

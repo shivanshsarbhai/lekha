@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
@@ -78,6 +79,23 @@ class TransactionRepository {
 				.param("to", to)
 				.query(TransactionRepository::mapRow)
 				.list();
+	}
+
+	/**
+	 * Loads one transaction and locks its row until the surrounding database transaction ends, so two saves of the
+	 * same transaction's allocations run one after the other instead of interleaving.
+	 */
+	Optional<Transaction> findByIdForUpdate(UUID id) {
+		return jdbc.sql("""
+				SELECT id, account_id, transaction_date, settlement_date, description, amount,
+				       balance_after, payment_mode, metadata, created_at
+				FROM transactions
+				WHERE id = :id
+				FOR UPDATE
+				""")
+				.param("id", id)
+				.query(TransactionRepository::mapRow)
+				.optional();
 	}
 
 	private static Transaction mapRow(ResultSet rs, int rowNum) throws SQLException {
