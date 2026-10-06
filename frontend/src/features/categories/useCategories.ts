@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { listCategories, type CategoryNode } from "../../api/categories";
 
 export type CategoriesState =
@@ -12,9 +12,13 @@ export interface CategoryLabel {
   parentName: string | null;
 }
 
-/** The category tree, plus a lookup from id to name for showing allocations, which carry only ids. */
+/**
+ * The category tree, plus a lookup from id to name for showing allocations, which carry only ids. `reload` fetches the
+ * tree again after a change, keeping the current one on screen until the new one arrives.
+ */
 export function useCategories() {
   const [state, setState] = useState<CategoriesState>({ status: "loading" });
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -24,11 +28,14 @@ export function useCategories() {
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         const message = error instanceof Error ? error.message : "Unknown error";
-        setState({ status: "error", message });
+        // A failed reload keeps the tree already shown rather than replacing it with an error.
+        setState((current) => (current.status === "success" ? current : { status: "error", message }));
       });
 
     return () => controller.abort();
-  }, []);
+  }, [version]);
+
+  const reload = useCallback(() => setVersion((current) => current + 1), []);
 
   const labels = useMemo(() => {
     const byId = new Map<string, CategoryLabel>();
@@ -42,5 +49,5 @@ export function useCategories() {
     return byId;
   }, [state]);
 
-  return { state, labels };
+  return { state, labels, reload };
 }

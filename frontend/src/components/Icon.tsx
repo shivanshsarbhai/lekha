@@ -17,6 +17,10 @@ const PATHS = {
   chevronRight: "M9 6l6 6-6 6",
   info: "M12 21a9 9 0 100-18 9 9 0 000 18zm0-10v5m0-8.5v.01",
   refresh: "M4 4v6h6M20 20v-6h-6M5.5 15a7 7 0 0011.9 2.5M18.5 9A7 7 0 006.6 6.5",
+  search: "M11 18a7 7 0 100-14 7 7 0 000 14zm9 2l-4.35-4.35",
+  tag: "M3 12V4a1 1 0 011-1h8l9 9-9 9-9-9zM7.5 7.5h.01",
+  edit: "M4 20h4L18.5 9.5a2.1 2.1 0 00-3-3L5 17v3zM13.5 6.5l3 3",
+  trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
 } as const;
 
 export type IconName = keyof typeof PATHS;

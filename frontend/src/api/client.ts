@@ -18,7 +18,9 @@ interface RequestOptions {
   signal?: AbortSignal | undefined;
 }
 
-async function request<T>(method: "GET" | "POST" | "PUT", path: string, options: RequestOptions = {}): Promise<T> {
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+async function request<T>(method: Method, path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (options.contentType !== undefined) {
     headers["Content-Type"] = options.contentType;
@@ -41,6 +43,10 @@ async function request<T>(method: "GET" | "POST" | "PUT", path: string, options:
     throw await toApiError(response, `${method} ${path} failed with HTTP ${response.status}`);
   }
 
+  // 204 No Content has no body, so parsing it as JSON would throw even though the request succeeded.
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return (await response.json()) as T;
 }
 
@@ -68,6 +74,16 @@ export function apiPost<TBody, TResponse>(path: string, body: TBody): Promise<TR
 /** Replaces the resource at `path` with `body`. Sending the same body twice leaves the same result. */
 export function apiPut<TBody, TResponse>(path: string, body: TBody): Promise<TResponse> {
   return request<TResponse>("PUT", path, { body: JSON.stringify(body), contentType: "application/json" });
+}
+
+/** Changes only the fields in `body`. */
+export function apiPatch<TBody, TResponse>(path: string, body: TBody): Promise<TResponse> {
+  return request<TResponse>("PATCH", path, { body: JSON.stringify(body), contentType: "application/json" });
+}
+
+/** Resolves with no value on 204 No Content. */
+export function apiDelete(path: string): Promise<void> {
+  return request<void>("DELETE", path);
 }
 
 /**
