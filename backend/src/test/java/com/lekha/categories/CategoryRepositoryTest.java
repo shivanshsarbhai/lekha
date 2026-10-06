@@ -41,6 +41,10 @@ class CategoryRepositoryTest {
 		assertThat(find(all, "Salary").kind()).isEqualTo(CategoryKind.INCOME);
 		assertThat(find(all, "Mutual funds").kind()).isEqualTo(CategoryKind.INVESTMENT);
 		assertThat(find(all, "Mutual fund redemption").kind()).isEqualTo(CategoryKind.TRANSFER);
+		assertThat(find(all, "Bank to bank transfer").kind()).isEqualTo(CategoryKind.TRANSFER);
+		assertThat(find(all, "Wallet to bank transfer").kind()).isEqualTo(CategoryKind.TRANSFER);
+		assertThat(find(all, "Bank to wallet transfer").kind()).isEqualTo(CategoryKind.TRANSFER);
+		assertThat(find(all, "Credit card bill payment").kind()).isEqualTo(CategoryKind.TRANSFER);
 	}
 
 	@Test
