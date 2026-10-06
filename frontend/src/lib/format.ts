@@ -5,10 +5,21 @@ const rupees = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 2,
 });
 
+const wholeRupees = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  maximumFractionDigits: 0,
+});
+
 const shortDate = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
 export function formatMoney(amount: number): string {
   return rupees.format(amount);
+}
+
+/** Rounded to the rupee, for charts and summaries where paise are noise. */
+export function formatWholeMoney(amount: number): string {
+  return wholeRupees.format(amount);
 }
 
 export function formatSignedMoney(amount: number): string {

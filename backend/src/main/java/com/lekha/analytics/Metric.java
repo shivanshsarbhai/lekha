@@ -25,6 +25,12 @@ enum Metric {
 			Set.of("EXPENSE", "INCOME")),
 	/** Classified transactions. A split transaction counts once per group it appears in. */
 	TRANSACTION_COUNT("transaction_count", "COUNT(DISTINCT t.id)", Type.COUNT, Set.of()),
+	/**
+	 * Transactions with an expense in them, refunds included. It is what {@link #AVERAGE_SPEND} divides by, so spending
+	 * is always average_spend × spend_count.
+	 */
+	SPEND_COUNT("spend_count", "COUNT(DISTINCT t.id) FILTER (WHERE a.kind = 'EXPENSE')", Type.COUNT,
+			Set.of("EXPENSE")),
 	/** Spending per transaction that has an expense in it. Null when there are none. */
 	AVERAGE_SPEND("average_spend", """
 			ROUND(-SUM(a.amount) FILTER (WHERE a.kind = 'EXPENSE')

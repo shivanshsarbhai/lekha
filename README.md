@@ -43,12 +43,41 @@ Banking apps show you *cash flow*: money in and money out. That's not the same a
 - **Editable two-level categories** (Food → Ordering in, Travel → Autos & cabs…) seeded with an India-first set: rent,
   maintenance, cook & house help, UPI-heavy food delivery, metro, PPF/EPF, NPS and more.
 ### Dashboards
-- **Headline totals** for spending, income, invested, lent and unclassified, for any month or custom range.
-- **Any granularity:** daily, weekly, monthly or yearly trends of spending, income and savings rate.
+- **Headline totals** for spending, income, invested, lent, savings rate and unclassified, for any month or custom range.
+- **Questions about your habits:** how much you spend on weekends versus weekdays, which day of the week costs the most,
+  and whether money goes early in the month (just after payday) or late.
 - **Breakdowns that drill down:** spending by category, then sub-category, then the individual transactions behind
-  a number. You can also break it down by account or payment mode.
-- **Comparisons:** this month against last month and against your average, with the categories that changed most.
+  a number. You can also break it down by account or payment mode, and combine them (weekend food spending by card
+  versus UPI).
+- **Any granularity:** daily, weekly, monthly, quarterly or yearly trends, with empty periods shown as zero rather than
+  skipped.
 - Every figure is an exact server-side aggregate of your allocations, so dashboard totals always match the ledger.
+
+### Semantic layer
+Every dashboard is powered by one query endpoint over a small, fixed vocabulary of **metrics** and **dimensions**:
+
+| Metrics | Dimensions |
+|---|---|
+| `spending`, `income`, `invested`, `lent`, `savings_rate`, `transaction_count`, `spend_count`, `average_spend` | Time: `day`, `week`, `month`, `quarter`, `year`<br/>Calendar: `day_of_week`, `day_type` (weekday / weekend), `month_of_year`, `month_phase` (early / mid / late)<br/>Money: `kind`, `category`, `subcategory`, `account`, `payment_mode` |
+
+A question like *"How much did I spend on food at weekends this month?"* is one request:
+
+```json
+POST /api/v1/analytics/query
+{
+  "metrics": ["spending"],
+  "filters": { "category": ["<food category id>"], "day_type": ["WEEKEND"] },
+  "from": "2026-09-01",
+  "to": "2026-09-30"
+}
+```
+
+- **Safe by construction.** Each metric and dimension is a fixed SQL fragment defined on the server. The client only
+  chooses names, and every value is a bound parameter, so no client-supplied SQL ever runs.
+- **One definition of every number.** "Spending" means the same thing on every chart: expenses net of refunds,
+  excluding transfers, money lent and investments.
+- **Bounded.** At most three dimensions, one time grain, and a capped row count and date range, so no query can grow
+  unbounded.
 
 ### AI features
 
@@ -97,7 +126,7 @@ flowchart LR
         TX[transactions<br/>ledger, allocations, totals]
         CA[categories]
         AC[accounts]
-        AN[analytics<br/>dashboards & breakdowns]
+        AN[analytics<br/>semantic layer: metrics & dimensions]
         AI[ai<br/>classifier, anomalies, monthly summary]
         ST --> TX
         TX --> CA
@@ -161,8 +190,7 @@ erDiagram
 | `PUT` | `/api/v1/transactions/{id}/allocations` | Classify or split a transaction (replaces the whole set) |
 | `GET` | `/api/v1/transactions/{id}/suggestion` | AI classification suggestion |
 | `GET` / `POST` / `PATCH` / `DELETE` | `/api/v1/categories` | Manage the category tree |
-| `GET` | `/api/v1/analytics/trend?from=&to=&granularity=` | Spending, income and savings over time |
-| `GET` | `/api/v1/analytics/breakdown?from=&to=&by=&categoryId=` | Totals by category, sub-category, account or payment mode |
+| `POST` | `/api/v1/analytics/query` | Any metrics grouped and filtered by any dimensions (the semantic layer) |
 | `GET` | `/api/v1/insights/anomalies` | Anomaly alerts for a period |
 | `GET` | `/api/v1/insights/summary?month=` | AI-written summary of a month |
 
@@ -226,7 +254,7 @@ lekha/
 │   ├── statements/     PDF parsing, reconciliation, import
 │   ├── transactions/   ledger, allocations, classification, totals
 │   ├── categories/     editable category tree
-│   ├── analytics/      dashboard trends and breakdowns
+│   ├── analytics/      semantic layer: metrics, dimensions, query compiler
 │   ├── ai/             classifier, anomaly detection, monthly summary
 │   └── web/            global error handling
 ├── backend/src/main/resources/db/migration/   Flyway migrations

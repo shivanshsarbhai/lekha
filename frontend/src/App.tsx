@@ -2,10 +2,12 @@ import { Navigate, NavLink, Route, Routes } from "react-router";
 import { Icon, type IconName } from "./components/Icon";
 import { AccountsPage } from "./features/accounts/AccountsPage";
 import { CategoriesPage } from "./features/categories/CategoriesPage";
+import { DashboardPage } from "./features/dashboard/DashboardPage";
 import { SystemStatus } from "./features/system/SystemStatus";
 import { TransactionsPage } from "./features/transactions/TransactionsPage";
 
 const NAV: { label: string; icon: IconName; to?: string }[] = [
+  { label: "Dashboard", icon: "grid", to: "/dashboard" },
   { label: "Accounts", icon: "wallet", to: "/accounts" },
   { label: "Transactions", icon: "list", to: "/transactions" },
   { label: "Categories", icon: "tag", to: "/categories" },
@@ -55,11 +57,12 @@ export function App() {
 
       <main className="main">
         <Routes>
-          <Route path="/" element={<Navigate to="/accounts" replace />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/accounts" element={<AccountsPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
           <Route path="/categories" element={<CategoriesPage />} />
-          <Route path="*" element={<Navigate to="/accounts" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
     </div>

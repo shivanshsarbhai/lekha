@@ -67,8 +67,8 @@ export function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   return request<T>("GET", path, { signal });
 }
 
-export function apiPost<TBody, TResponse>(path: string, body: TBody): Promise<TResponse> {
-  return request<TResponse>("POST", path, { body: JSON.stringify(body), contentType: "application/json" });
+export function apiPost<TBody, TResponse>(path: string, body: TBody, signal?: AbortSignal): Promise<TResponse> {
+  return request<TResponse>("POST", path, { body: JSON.stringify(body), contentType: "application/json", signal });
 }
 
 /** Replaces the resource at `path` with `body`. Sending the same body twice leaves the same result. */

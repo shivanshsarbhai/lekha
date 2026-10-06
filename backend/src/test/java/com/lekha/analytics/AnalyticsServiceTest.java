@@ -92,6 +92,15 @@ class AnalyticsServiceTest {
 	}
 
 	@Test
+	void spendCountOnlyCountsTransactionsWithAnExpenseInThem() {
+		QueryResult result = query(List.of("spend_count", "transaction_count"), List.of("day_type"), Map.of(), SEP_1,
+				SEP_30);
+
+		// Weekdays have the salary, SIP and transfer but no expense; the weekend has the dinner and its refund.
+		assertThat(result.rows()).containsExactly(row("WEEKDAY", 0L, 3L), row("WEEKEND", 2L, 2L));
+	}
+
+	@Test
 	void filteringOnALabelDimensionWithoutGroupingByIt() {
 		QueryResult result = query(List.of("spending"), List.of(), Map.of("day_type", List.of("WEEKEND")), SEP_1,
 				SEP_30);
