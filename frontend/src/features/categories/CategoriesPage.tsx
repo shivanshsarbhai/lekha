@@ -9,6 +9,7 @@ import {
 } from "../../api/categories";
 import { Dialog } from "../../components/Dialog";
 import { Icon } from "../../components/Icon";
+import { hueOf } from "../../lib/hue";
 import { useCategories } from "./useCategories";
 
 const TABS: { kind: CategoryKind; label: string; hint: string }[] = [
@@ -26,13 +27,6 @@ function isKind(value: string | null): value is CategoryKind {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
-}
-
-/** A stable colour per category name, so each card is easy to recognise at a glance. */
-function hueOf(name: string): number {
-  let hash = 0;
-  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) % 360;
-  return hash;
 }
 
 type Deleting = { node: CategoryNode; parent: CategoryNode | null };

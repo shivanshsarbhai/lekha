@@ -1,7 +1,7 @@
 import type { Account } from "../../api/accounts";
 import { Icon } from "../../components/Icon";
 import { formatInstant } from "../../lib/format";
-import { INSTITUTION_LABELS, INSTITUTION_SHORT, TYPE_LABELS } from "./labels";
+import { INSTITUTION_LABELS, TYPE_LABELS } from "./labels";
 
 export interface LastImport {
   imported: number;
@@ -57,30 +57,22 @@ interface AccountCardProps {
 function AccountCard({ account, lastImport, onImport }: AccountCardProps) {
   return (
     <li className="account-card">
-      <div className="account-card__top">
-        <span className={`bank-badge bank-badge--${account.institution.toLowerCase()}`} aria-hidden="true">
-          {INSTITUTION_SHORT[account.institution]}
-        </span>
-        <div className="account-card__heading">
-          <p className="account-card__nickname">{account.nickname}</p>
-          <p className="account-card__institution">{INSTITUTION_LABELS[account.institution]}</p>
+      <div className={`card-face card-face--${account.institution.toLowerCase()}`}>
+        <div className="card-face__top">
+          <span className="card-face__bank">{INSTITUTION_LABELS[account.institution]}</span>
+          <span className="card-face__type">
+            <Icon name={account.type === "BANK" ? "bank" : "card"} size={13} />
+            {TYPE_LABELS[account.type]}
+          </span>
         </div>
-        <span className={`tag tag--${account.type === "BANK" ? "bank" : "card"}`}>
-          <Icon name={account.type === "BANK" ? "bank" : "card"} size={13} />
-          {TYPE_LABELS[account.type]}
-        </span>
+        {account.type === "CREDIT_CARD" && <span className="card-face__chip" aria-hidden="true" />}
+        <div className="card-face__bottom">
+          <p className="card-face__nickname">{account.nickname}</p>
+          <span className="card-face__number mono">{account.last4 !== null ? `•••• ${account.last4}` : ""}</span>
+        </div>
       </div>
 
-      <dl className="account-card__facts">
-        <div>
-          <dt>Number</dt>
-          <dd className="mono">{account.last4 !== null ? `•••• ${account.last4}` : "—"}</dd>
-        </div>
-        <div>
-          <dt>Added</dt>
-          <dd>{formatInstant(account.createdAt)}</dd>
-        </div>
-      </dl>
+      <p className="account-card__added">Added {formatInstant(account.createdAt)}</p>
 
       <div className="account-card__footer">
         <span className="account-card__status">

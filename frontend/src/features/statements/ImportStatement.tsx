@@ -5,7 +5,7 @@ import type { StatementImport } from "../../api/statements";
 import type { Transaction } from "../../api/transactions";
 import { Icon } from "../../components/Icon";
 import { formatFileSize, formatLocalDate, formatMoney, formatSignedMoney, sumMoney } from "../../lib/format";
-import { MODE_LABELS } from "../transactions/labels";
+import { merchantName } from "../../lib/merchant";
 import { useStatementUpload } from "./useStatementUpload";
 
 /** Matches spring.servlet.multipart.max-file-size, so oversized files fail fast without uploading. */
@@ -243,16 +243,9 @@ function TransactionTable({ transactions }: { transactions: Transaction[] }) {
             <tr key={transaction.id}>
               <td className="table__date">{formatLocalDate(transaction.transactionDate)}</td>
               <td>
-                <div className="table__description">
-                  {transaction.paymentMode && (
-                    <span className={`mode mode--${transaction.paymentMode.toLowerCase()}`}>
-                      {MODE_LABELS[transaction.paymentMode]}
-                    </span>
-                  )}
-                  <span className="table__narration" title={transaction.description}>
-                    {transaction.description}
-                  </span>
-                </div>
+                <span className="table__narration" title={transaction.description}>
+                  {merchantName(transaction.description)}
+                </span>
               </td>
               <td className={`table__num amount ${transaction.amount < 0 ? "amount--out" : "amount--in"}`}>
                 {formatSignedMoney(transaction.amount)}

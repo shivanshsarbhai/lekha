@@ -11,10 +11,4 @@ export const INSTITUTION_LABELS: Record<Institution, string> = {
   FEDERAL_BANK: "Federal Bank",
 };
 
-export const INSTITUTION_SHORT: Record<Institution, string> = {
-  HDFC: "HD",
-  SBI: "SB",
-  FEDERAL_BANK: "FB",
-};
-
 export const INSTITUTIONS = Object.keys(INSTITUTION_LABELS) as Institution[];

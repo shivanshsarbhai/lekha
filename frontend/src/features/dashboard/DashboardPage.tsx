@@ -1,12 +1,12 @@
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { AnalyticsResult, DimensionName, MetricName } from "../../api/analytics";
-import type { PaymentMode } from "../../api/transactions";
-import { Icon, type IconName } from "../../components/Icon";
-import { formatWholeMoney } from "../../lib/format";
-import { currentMonth, formatMonth, isMonth, monthRange, shiftMonth, type Month } from "../../lib/month";
+import { AccountSelect, MonthPicker } from "../../components/Filters";
+import { Icon } from "../../components/Icon";
+import { formatLocalDate, formatWholeMoney } from "../../lib/format";
+import { hueOf } from "../../lib/hue";
+import { currentMonth, formatMonth, isMonth, monthRange, type Month } from "../../lib/month";
 import { useAccounts } from "../accounts/useAccounts";
-import { MODE_LABELS } from "../transactions/labels";
 import { useAnalyticsQuery, type AnalyticsState } from "./useAnalyticsQuery";
 
 /** The date range and account every section on the page shares. */
@@ -28,7 +28,7 @@ export function DashboardPage() {
   const scope: Scope = { ...monthRange(month), filters: accountId !== null ? { account: [accountId] } : {} };
 
   const totals = useAnalyticsQuery({
-    metrics: ["spending", "income", "invested", "lent", "savings_rate", "transaction_count"],
+    metrics: ["spending", "income", "invested", "lent", "savings_rate", "transaction_count", "spend_count"],
     ...scope,
   });
 
@@ -54,68 +54,16 @@ export function DashboardPage() {
       <header className="page-header">
         <div>
           <p className="page-header__eyebrow">Dashboard</p>
-          <h1 className="page-header__title">Where your money went</h1>
+          <h1 className="page-header__title">{formatMonth(month)}</h1>
           <p className="page-header__subtitle">
-            {selectedAccount ? selectedAccount.nickname : "All accounts"} · {formatMonth(month)}
+            {selectedAccount ? selectedAccount.nickname : "All accounts"} · where your money went
           </p>
         </div>
-      </header>
-
-      <div className="toolbar">
-        <div className="month-picker" role="group" aria-label="Month">
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Previous month"
-            onClick={() => updateFilter({ month: shiftMonth(month, -1) })}
-          >
-            <Icon name="chevronLeft" />
-          </button>
-          <input
-            type="month"
-            className="month-picker__input"
-            value={month}
-            onChange={(event) => {
-              if (isMonth(event.target.value)) updateFilter({ month: event.target.value });
-            }}
-            aria-label="Choose month"
-          />
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Next month"
-            onClick={() => updateFilter({ month: shiftMonth(month, 1) })}
-          >
-            <Icon name="chevronRight" />
-          </button>
+        <div className="toolbar">
+          <MonthPicker month={month} onChange={(next) => updateFilter({ month: next })} />
+          <AccountSelect accounts={accounts} value={accountId} onChange={(next) => updateFilter({ account: next })} />
         </div>
-
-        <label className="toolbar__select">
-          <span className="sr-only">Account</span>
-          <select
-            className="input"
-            value={accountId ?? ""}
-            onChange={(event) => updateFilter({ account: event.target.value === "" ? null : event.target.value })}
-          >
-            <option value="">All accounts</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.nickname}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {month !== currentMonth() && (
-          <button
-            type="button"
-            className="button button--ghost button--sm"
-            onClick={() => updateFilter({ month: currentMonth() })}
-          >
-            This month
-          </button>
-        )}
-      </div>
+      </header>
 
       {totals.status === "error" ? (
         <div className="callout callout--error" role="alert">
@@ -125,112 +73,151 @@ export function DashboardPage() {
             <p className="callout__text">{totals.message}</p>
           </div>
         </div>
+      ) : nothingClassified ? (
+        <div className="empty">
+          <span className="empty__icon">
+            <Icon name="chart" size={26} />
+          </span>
+          {unclassified === 0 ? (
+            <>
+              <p className="empty__title">Nothing in {formatMonth(month)} yet</p>
+              <p className="empty__text">Import a statement that covers this month, or pick another month.</p>
+              <Link className="button" to="/accounts">
+                <Icon name="upload" /> Import a statement
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="empty__title">Classify {formatMonth(month)} to see your dashboard</p>
+              <p className="empty__text">
+                {unclassified} transactions are waiting. Tell Lekha what each one was and the charts fill in.
+              </p>
+              <Link className="button" to={`${transactionsLink}&unclassified=1`}>
+                <Icon name="tag" /> Classify transactions
+              </Link>
+            </>
+          )}
+        </div>
       ) : (
         <>
-          <dl className="metrics metrics--four">
-            <Tile label="Spent" icon="arrowUp" tone="out" value={summary?.spending} />
-            <Tile label="Income" icon="arrowDown" tone="in" value={summary?.income} />
-            <Tile label="Invested" icon="chart" tone="neutral" value={summary?.invested} />
-            <Tile label="Lent" icon="split" tone="neutral" value={summary?.lent} />
-            <div className="metric">
-              <span className="metric__icon">
-                <Icon name="wallet" />
-              </span>
-              <div>
-                <dt className="metric__label">Saved of income</dt>
-                <dd className="metric__value">
-                  {summary === undefined ? (
-                    <span className="skeleton skeleton--value" />
-                  ) : summary.savings_rate === null ? (
-                    "—"
-                  ) : (
-                    `${(summary.savings_rate * 100).toFixed(1)}%`
-                  )}
-                </dd>
-              </div>
-            </div>
-          </dl>
+          <Hero summary={summary} from={scope.from} to={scope.to} />
 
-          {unclassified > 0 && !nothingClassified && (
-            <div className="callout callout--info">
-              <Icon name="info" className="callout__icon" />
-              <div>
-                <p className="callout__title">
-                  {unclassified} {unclassified === 1 ? "transaction isn't" : "transactions aren't"} counted yet
-                </p>
-                <p className="callout__text">
-                  Figures only include classified transactions.{" "}
-                  <Link className="link-button" to={`${transactionsLink}&unclassified=1`}>
-                    Classify them
-                  </Link>
-                </p>
-              </div>
-            </div>
+          {unclassified > 0 && (
+            <Link className="nudge" to={`${transactionsLink}&unclassified=1`}>
+              <span className="nudge__icon">
+                <Icon name="tag" size={16} />
+              </span>
+              <span>
+                <strong>
+                  {unclassified} {unclassified === 1 ? "transaction isn't" : "transactions aren't"} counted yet.
+                </strong>{" "}
+                Classify {unclassified === 1 ? "it" : "them"} to complete this month.
+              </span>
+              <Icon name="chevronRight" size={16} className="nudge__arrow" />
+            </Link>
           )}
 
-          {nothingClassified ? (
-            <div className="empty">
-              <span className="empty__icon">
-                <Icon name="chart" size={26} />
-              </span>
-              {unclassified === 0 ? (
-                <>
-                  <p className="empty__title">No transactions in {formatMonth(month)}</p>
-                  <p className="empty__text">Import a statement that covers this month, or pick another month.</p>
-                  <Link className="button" to="/accounts">
-                    <Icon name="upload" /> Import a statement
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <p className="empty__title">Nothing classified in {formatMonth(month)} yet</p>
-                  <p className="empty__text">
-                    Classify the {unclassified} transactions from this month and the dashboard fills in.
-                  </p>
-                  <Link className="button" to={`${transactionsLink}&unclassified=1`}>
-                    <Icon name="tag" /> Classify transactions
-                  </Link>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="dash-grid">
-              <SpendingByCategory scope={scope} />
-              <WeekdaysAndWeekends scope={scope} />
-              <ThroughTheMonth scope={scope} />
-              <DaysOfTheWeek scope={scope} />
-              <PaymentModes scope={scope} />
-            </div>
-          )}
+          <div className="dash-grid">
+            <SpendingByCategory scope={scope} />
+            <ThroughTheMonth scope={scope} />
+            <WeekdaysAndWeekends scope={scope} />
+            <DaysOfTheWeek scope={scope} />
+          </div>
         </>
       )}
     </div>
   );
 }
 
-function Tile({
-  label,
-  icon,
-  tone,
-  value,
-}: {
-  label: string;
-  icon: IconName;
-  tone: "in" | "out" | "neutral";
-  value: number | null | undefined;
-}) {
+/* ------------------------------------------------------------------------------------------------------------------
+   Hero: what you spent, and where your income went
+   ------------------------------------------------------------------------------------------------------------------ */
+
+interface Summary {
+  spending: number | null;
+  income: number | null;
+  invested: number | null;
+  lent: number | null;
+  savings_rate: number | null;
+  spend_count: number | null;
+}
+
+function Hero({ summary, from, to }: { summary: Summary | undefined; from: string; to: string }) {
+  if (summary === undefined) {
+    return (
+      <section className="hero hero--loading" aria-label="Loading the month">
+        <span className="skeleton skeleton--line skeleton--short" />
+        <span className="skeleton skeleton--hero" />
+        <span className="skeleton skeleton--line" />
+      </section>
+    );
+  }
+
+  const spent = summary.spending ?? 0;
+  const income = summary.income ?? 0;
+  const invested = summary.invested ?? 0;
+  const lent = summary.lent ?? 0;
+  const days = daysSoFar(from, to);
+  const leftOver = income - spent - invested - lent;
+  const whole = Math.max(income, spent + invested + Math.max(lent, 0));
+  const parts = [
+    { key: "spent", label: "Spent", value: spent },
+    { key: "invested", label: "Invested", value: invested },
+    { key: "lent", label: "Lent", value: Math.max(lent, 0) },
+    { key: "left", label: leftOver >= 0 ? "Left over" : "Over income", value: Math.abs(leftOver) },
+  ].filter((part) => part.value > 0);
+
   return (
-    <div className={`metric metric--${tone}`}>
-      <span className="metric__icon">
-        <Icon name={icon} />
-      </span>
-      <div>
-        <dt className="metric__label">{label}</dt>
-        <dd className="metric__value">
-          {value === undefined ? <span className="skeleton skeleton--value" /> : formatWholeMoney(value ?? 0)}
-        </dd>
+    <section className="hero">
+      <div className="hero__main">
+        <p className="hero__label">Total spent</p>
+        <p className="hero__value num">{formatWholeMoney(spent)}</p>
+        <p className="hero__meta">
+          {summary.spend_count ?? 0} spends · about {formatWholeMoney(days > 0 ? spent / days : 0)} a day
+        </p>
       </div>
-    </div>
+
+      <div className="hero__split">
+        <div className="hero__split-head">
+          <div>
+            <p className="hero__label">Income</p>
+            <p className="hero__income num">{formatWholeMoney(income)}</p>
+          </div>
+          {summary.savings_rate !== null && (
+            <span className={`pill ${summary.savings_rate >= 0 ? "pill--good" : "pill--bad"}`}>
+              {Math.round(summary.savings_rate * 100)}% saved
+            </span>
+          )}
+        </div>
+
+        {whole > 0 && (
+          <>
+            <div className="stack" role="img" aria-label="How this month's income was used">
+              {parts.map((part) => (
+                <span
+                  key={part.key}
+                  className={`stack__part stack__part--${part.key}${part.key === "left" && leftOver < 0 ? " stack__part--over" : ""}`}
+                  style={{ flexGrow: part.value }}
+                  title={`${part.label}: ${formatWholeMoney(part.value)}`}
+                />
+              ))}
+            </div>
+            <ul className="legend">
+              {parts.map((part) => (
+                <li key={part.key} className="legend__item">
+                  <span
+                    className={`legend__dot stack__part--${part.key}${part.key === "left" && leftOver < 0 ? " stack__part--over" : ""}`}
+                  />
+                  <span className="legend__label">{part.label}</span>
+                  <span className="legend__value num">{formatWholeMoney(part.value)}</span>
+                  {income > 0 && <span className="legend__share">{Math.round((part.value / income) * 100)}%</span>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -243,11 +230,9 @@ function SpendingByCategory({ scope }: { scope: Scope }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
   return (
-    <Panel title="Where it went" subtitle="Spending by category. Open one to see what's inside." wide state={state}>
+    <Panel title="Where it went" subtitle="Spending by category. Open one to see what's inside." size="full" state={state}>
       {({ rows }) => {
-        const items = rows
-          .filter((row) => (row.spending ?? 0) !== 0)
-          .sort((a, b) => (b.spending ?? 0) - (a.spending ?? 0));
+        const items = byValue(rows.filter((row) => (row.spending ?? 0) !== 0), (row) => row.spending);
         if (items.length === 0) return <PanelEmpty>No spending this month.</PanelEmpty>;
         const total = items.reduce((sum, row) => sum + (row.spending ?? 0), 0);
         const max = Math.max(...items.map((row) => row.spending ?? 0));
@@ -257,16 +242,17 @@ function SpendingByCategory({ scope }: { scope: Scope }) {
               const id = row.category_id;
               const open = id !== null && id === openId;
               return (
-                <li key={id ?? "uncategorised"}>
+                <li key={id ?? "uncategorised"} className={open ? "bars__open" : undefined}>
                   <Bar
                     label={row.category}
+                    avatar={id !== null ? row.category : null}
                     value={row.spending ?? 0}
                     max={max}
                     detail={share(row.spending ?? 0, total)}
                     expanded={id !== null ? open : undefined}
                     onClick={id !== null ? () => setOpenId(open ? null : id) : undefined}
                   />
-                  {open && <SubcategoryBreakdown scope={scope} categoryId={id} />}
+                  {open && <SubcategoryBreakdown scope={scope} categoryId={id} hueName={row.category} />}
                 </li>
               );
             })}
@@ -277,7 +263,7 @@ function SpendingByCategory({ scope }: { scope: Scope }) {
   );
 }
 
-function SubcategoryBreakdown({ scope, categoryId }: { scope: Scope; categoryId: string }) {
+function SubcategoryBreakdown({ scope, categoryId, hueName }: { scope: Scope; categoryId: string; hueName: string }) {
   const state = useAnalyticsQuery({
     metrics: ["spending"],
     dimensions: ["subcategory"],
@@ -294,12 +280,10 @@ function SubcategoryBreakdown({ scope, categoryId }: { scope: Scope; categoryId:
   }
   if (state.status === "error") return <p className="bars__nested panel__error">{state.message}</p>;
 
-  const items = state.result.rows
-    .filter((row) => (row.spending ?? 0) !== 0)
-    .sort((a, b) => (b.spending ?? 0) - (a.spending ?? 0));
+  const items = byValue(state.result.rows.filter((row) => (row.spending ?? 0) !== 0), (row) => row.spending);
   const max = Math.max(0, ...items.map((row) => row.spending ?? 0));
   return (
-    <ul className="bars bars__nested">
+    <ul className="bars bars__nested" style={{ "--hue": hueOf(hueName) } as CSSProperties}>
       {items.map((row) => (
         <li key={row.subcategory_id ?? "none"}>
           <Bar
@@ -318,50 +302,6 @@ function SubcategoryBreakdown({ scope, categoryId }: { scope: Scope; categoryId:
   );
 }
 
-function WeekdaysAndWeekends({ scope }: { scope: Scope }) {
-  const state = useAnalyticsQuery({
-    metrics: ["spending", "spend_count", "average_spend"],
-    dimensions: ["day_type"],
-    ...scope,
-  });
-  const days = countDays(scope.from, scope.to);
-
-  return (
-    <Panel title="Weekdays vs weekends" subtitle="Weekends are Saturday and Sunday." state={state}>
-      {({ rows }) => (
-        <div className="split-stats">
-          {(["WEEKDAY", "WEEKEND"] as const).map((type) => {
-            const row = rows.find((candidate) => candidate.day_type === type);
-            const spent = row?.spending ?? 0;
-            const average = row?.average_spend ?? null;
-            const dayCount = type === "WEEKEND" ? days.weekend : days.weekday;
-            return (
-              <div key={type} className="split-stats__item">
-                <p className="split-stats__label">{type === "WEEKEND" ? "Weekends" : "Weekdays"}</p>
-                <p className="split-stats__value">{formatWholeMoney(spent)}</p>
-                <dl className="split-stats__facts">
-                  <div>
-                    <dt>Per day</dt>
-                    <dd>{formatWholeMoney(dayCount > 0 ? spent / dayCount : 0)}</dd>
-                  </div>
-                  <div>
-                    <dt>Spends</dt>
-                    <dd>{row?.spend_count ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>Per spend</dt>
-                    <dd>{average !== null ? formatWholeMoney(average) : "—"}</dd>
-                  </div>
-                </dl>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Panel>
-  );
-}
-
 const PHASES = [
   { key: "EARLY", label: "1st – 10th" },
   { key: "MID", label: "11th – 20th" },
@@ -373,9 +313,13 @@ function ThroughTheMonth({ scope }: { scope: Scope }) {
   const phases = useAnalyticsQuery({ metrics: ["spending"], dimensions: ["month_phase"], ...scope });
 
   return (
-    <Panel title="Through the month" subtitle="Daily spending. Weekend days are shaded." wide state={daily}>
+    <Panel title="Through the month" subtitle="Daily spending. Weekends are shaded." size="full" state={daily}>
       {({ rows }) => {
         const max = Math.max(0, ...rows.map((row) => row.spending ?? 0));
+        const biggest = rows.reduce<(typeof rows)[number] | undefined>(
+          (best, row) => ((row.spending ?? 0) > (best?.spending ?? 0) ? row : best),
+          undefined,
+        );
         return (
           <>
             <div className="daily" role="img" aria-label="Spending for each day of the month">
@@ -385,28 +329,43 @@ function ThroughTheMonth({ scope }: { scope: Scope }) {
                 return (
                   <div
                     key={row.day}
-                    className={`daily__day${isWeekend(row.day) ? " daily__day--weekend" : ""}`}
-                    title={`${row.day}: ${formatWholeMoney(value)}`}
+                    className={`daily__day${isWeekend(row.day) ? " daily__day--weekend" : ""}${row === biggest ? " daily__day--peak" : ""}`}
                   >
-                    <span className="daily__bar" style={{ height: `${max > 0 ? (Math.max(value, 0) / max) * 100 : 0}%` }} />
+                    <span className="daily__tip num">
+                      {formatLocalDate(row.day)} · {formatWholeMoney(value)}
+                    </span>
+                    <span
+                      className="daily__bar"
+                      style={{ height: `${max > 0 ? (Math.max(value, 0) / max) * 100 : 0}%` }}
+                    />
                     <span className="daily__label">{dayNumber === 1 || dayNumber % 5 === 0 ? dayNumber : ""}</span>
                   </div>
                 );
               })}
             </div>
-            {phases.status === "success" && (
-              <div className="phases">
-                {PHASES.map((phase) => {
-                  const row = phases.result.rows.find((candidate) => candidate.month_phase === phase.key);
-                  return (
-                    <div key={phase.key} className="phases__item">
-                      <span className="phases__label">{phase.label}</span>
-                      <span className="phases__value">{formatWholeMoney(row?.spending ?? 0)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <div className="phases">
+              {biggest !== undefined && (biggest.spending ?? 0) > 0 && (
+                <div className="phases__item phases__item--peak">
+                  <span className="phases__label">Biggest day</span>
+                  <span className="phases__value num">{formatWholeMoney(biggest.spending ?? 0)}</span>
+                  <span className="phases__hint">{formatLocalDate(biggest.day)}</span>
+                </div>
+              )}
+              {PHASES.map((phase) => {
+                const row =
+                  phases.status === "success"
+                    ? phases.result.rows.find((candidate) => candidate.month_phase === phase.key)
+                    : undefined;
+                return (
+                  <div key={phase.key} className="phases__item">
+                    <span className="phases__label">{phase.label}</span>
+                    <span className="phases__value num">
+                      {phases.status === "success" ? formatWholeMoney(row?.spending ?? 0) : "…"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </>
         );
       }}
@@ -414,14 +373,73 @@ function ThroughTheMonth({ scope }: { scope: Scope }) {
   );
 }
 
+function WeekdaysAndWeekends({ scope }: { scope: Scope }) {
+  const state = useAnalyticsQuery({
+    metrics: ["spending", "spend_count", "average_spend"],
+    dimensions: ["day_type"],
+    ...scope,
+  });
+  const days = countDays(scope.from, scope.to);
+
+  return (
+    <Panel title="Weekdays vs weekends" subtitle="Saturdays and Sundays against the rest." state={state}>
+      {({ rows }) => {
+        const stats = (["WEEKDAY", "WEEKEND"] as const).map((type) => {
+          const row = rows.find((candidate) => candidate.day_type === type);
+          const spent = row?.spending ?? 0;
+          const dayCount = type === "WEEKEND" ? days.weekend : days.weekday;
+          return {
+            type,
+            label: type === "WEEKEND" ? "Weekends" : "Weekdays",
+            spent,
+            perDay: dayCount > 0 ? spent / dayCount : 0,
+            count: row?.spend_count ?? 0,
+            average: row?.average_spend ?? null,
+          };
+        });
+        const [weekday, weekend] = stats;
+        const insight =
+          weekday !== undefined && weekend !== undefined && weekday.perDay > 0 && weekend.perDay > 0
+            ? weekendInsight(weekend.perDay / weekday.perDay)
+            : null;
+        const maxPerDay = Math.max(0, ...stats.map((stat) => stat.perDay));
+        return (
+          <div className="versus">
+            {insight !== null && <p className="versus__insight">{insight}</p>}
+            {stats.map((stat) => (
+              <div key={stat.type} className={`versus__row versus__row--${stat.type.toLowerCase()}`}>
+                <div className="versus__head">
+                  <span className="versus__label">{stat.label}</span>
+                  <span className="versus__value num">{formatWholeMoney(stat.perDay)}</span>
+                  <span className="versus__unit">a day</span>
+                </div>
+                <span className="versus__track">
+                  <span
+                    className="versus__fill"
+                    style={{ width: `${maxPerDay > 0 ? (stat.perDay / maxPerDay) * 100 : 0}%` }}
+                  />
+                </span>
+                <p className="versus__facts">
+                  {formatWholeMoney(stat.spent)} in total · {stat.count} spends
+                  {stat.average !== null ? ` · ${formatWholeMoney(stat.average)} each` : ""}
+                </p>
+              </div>
+            ))}
+          </div>
+        );
+      }}
+    </Panel>
+  );
+}
+
 const WEEKDAYS = [
-  { key: "MON", label: "Mon" },
-  { key: "TUE", label: "Tue" },
-  { key: "WED", label: "Wed" },
-  { key: "THU", label: "Thu" },
-  { key: "FRI", label: "Fri" },
-  { key: "SAT", label: "Sat" },
-  { key: "SUN", label: "Sun" },
+  { key: "MON", label: "M", name: "Monday" },
+  { key: "TUE", label: "T", name: "Tuesday" },
+  { key: "WED", label: "W", name: "Wednesday" },
+  { key: "THU", label: "T", name: "Thursday" },
+  { key: "FRI", label: "F", name: "Friday" },
+  { key: "SAT", label: "S", name: "Saturday" },
+  { key: "SUN", label: "S", name: "Sunday" },
 ] as const;
 
 function DaysOfTheWeek({ scope }: { scope: Scope }) {
@@ -432,46 +450,35 @@ function DaysOfTheWeek({ scope }: { scope: Scope }) {
       {({ rows }) => {
         const values = WEEKDAYS.map((day) => rows.find((row) => row.day_of_week === day.key)?.spending ?? 0);
         const max = Math.max(0, ...values);
+        const peak = values.indexOf(max);
+        const peakDay = WEEKDAYS[peak];
         return (
-          <ul className="bars">
-            {WEEKDAYS.map((day, i) => (
-              <li key={day.key}>
-                <Bar label={day.label} value={values[i] ?? 0} max={max} small />
-              </li>
-            ))}
-          </ul>
-        );
-      }}
-    </Panel>
-  );
-}
-
-function PaymentModes({ scope }: { scope: Scope }) {
-  const state = useAnalyticsQuery({ metrics: ["spending"], dimensions: ["payment_mode"], ...scope });
-
-  return (
-    <Panel title="How you paid" subtitle="Spending by payment method." state={state}>
-      {({ rows }) => {
-        const items = rows
-          .filter((row) => (row.spending ?? 0) !== 0)
-          .sort((a, b) => (b.spending ?? 0) - (a.spending ?? 0));
-        if (items.length === 0) return <PanelEmpty>No spending this month.</PanelEmpty>;
-        const total = items.reduce((sum, row) => sum + (row.spending ?? 0), 0);
-        const max = Math.max(...items.map((row) => row.spending ?? 0));
-        return (
-          <ul className="bars">
-            {items.map((row) => (
-              <li key={row.payment_mode}>
-                <Bar
-                  label={isPaymentMode(row.payment_mode) ? MODE_LABELS[row.payment_mode] : "Unknown"}
-                  value={row.spending ?? 0}
-                  max={max}
-                  detail={share(row.spending ?? 0, total)}
-                  small
-                />
-              </li>
-            ))}
-          </ul>
+          <>
+            {max > 0 && peakDay !== undefined && (
+              <p className="panel__lead">
+                <strong>{peakDay.name}s</strong> cost the most: {formatWholeMoney(max)}
+              </p>
+            )}
+            <div className="columns" role="img" aria-label="Spending by day of the week">
+              {WEEKDAYS.map((day, i) => {
+                const value = values[i] ?? 0;
+                return (
+                  <div key={day.key} className={`columns__item${i === peak && max > 0 ? " columns__item--peak" : ""}`}>
+                    <span className="columns__value num">{value > 0 ? compactMoney(value) : ""}</span>
+                    <span className="columns__track">
+                      <span
+                        className="columns__bar"
+                        style={{ height: `${max > 0 ? (Math.max(value, 0) / max) * 100 : 0}%` }}
+                      />
+                    </span>
+                    <span className="columns__label" title={day.name}>
+                      {day.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         );
       }}
     </Panel>
@@ -485,18 +492,18 @@ function PaymentModes({ scope }: { scope: Scope }) {
 function Panel<M extends MetricName, D extends DimensionName>({
   title,
   subtitle,
-  wide = false,
+  size = "half",
   state,
   children,
 }: {
   title: string;
   subtitle: string;
-  wide?: boolean;
+  size?: "full" | "half";
   state: AnalyticsState<M, D>;
   children: (result: AnalyticsResult<M, D>) => ReactNode;
 }) {
   return (
-    <section className={`panel${wide ? " panel--wide" : ""}`}>
+    <section className={`panel panel--${size}`}>
       <header className="panel__header">
         <h2 className="panel__title">{title}</h2>
         <p className="panel__subtitle">{subtitle}</p>
@@ -520,6 +527,7 @@ function PanelEmpty({ children }: { children: ReactNode }) {
 
 function Bar({
   label,
+  avatar = null,
   value,
   max,
   detail,
@@ -528,6 +536,7 @@ function Bar({
   onClick,
 }: {
   label: string;
+  avatar?: string | null;
   value: number;
   max: number;
   detail?: string;
@@ -536,38 +545,64 @@ function Bar({
   onClick?: (() => void) | undefined;
 }) {
   const width = max > 0 ? (Math.max(value, 0) / max) * 100 : 0;
+  const style = avatar !== null ? ({ "--hue": hueOf(avatar) } as CSSProperties) : undefined;
   const content = (
     <>
       <span className="bar__label">
-        {onClick && <Icon name="chevronRight" size={14} className={`bar__chevron${expanded ? " bar__chevron--open" : ""}`} />}
-        {label}
+        {avatar !== null ? (
+          <span className="bar__avatar" aria-hidden="true">
+            {avatar.charAt(0)}
+          </span>
+        ) : (
+          !small && <span className="bar__avatar bar__avatar--none" aria-hidden="true" />
+        )}
+        <span className="bar__name">{label}</span>
+        {onClick && (
+          <Icon name="chevronRight" size={14} className={`bar__chevron${expanded ? " bar__chevron--open" : ""}`} />
+        )}
       </span>
       <span className="bar__track">
         <span className="bar__fill" style={{ width: `${width}%` }} />
       </span>
-      <span className="bar__value">
+      <span className="bar__value num">
         {formatWholeMoney(value)}
         {detail !== undefined && <span className="bar__detail">{detail}</span>}
       </span>
     </>
   );
-  const className = `bar${small ? " bar--small" : ""}`;
+  const className = `bar${small ? " bar--small" : ""}${avatar === null ? " bar--plain" : ""}`;
   return onClick ? (
-    <button type="button" className={`${className} bar--button`} aria-expanded={expanded} onClick={onClick}>
+    <button type="button" className={`${className} bar--button`} style={style} aria-expanded={expanded} onClick={onClick}>
       {content}
     </button>
   ) : (
-    <div className={className}>{content}</div>
+    <div className={className} style={style}>
+      {content}
+    </div>
   );
 }
 
-/** The server labels rows without a payment mode "UNKNOWN", which isn't one of the bank's modes. */
-function isPaymentMode(value: string): value is PaymentMode {
-  return Object.hasOwn(MODE_LABELS, value);
+function byValue<T>(rows: T[], value: (row: T) => number | null): T[] {
+  return [...rows].sort((a, b) => (value(b) ?? 0) - (value(a) ?? 0));
 }
 
 function share(value: number, total: number): string {
   return total > 0 ? `${Math.round((value / total) * 100)}%` : "";
+}
+
+function weekendInsight(ratio: number): string {
+  const percent = Math.round(Math.abs(ratio - 1) * 100);
+  if (percent < 5) return "You spend about the same on weekends as on weekdays.";
+  return ratio > 1
+    ? `A weekend day costs you ${percent}% more than a weekday.`
+    : `A weekend day costs you ${percent}% less than a weekday.`;
+}
+
+/** ₹1.2k, ₹38k, ₹1.4L: short enough to sit above a narrow column. */
+function compactMoney(amount: number): string {
+  if (amount >= 100000) return `₹${(amount / 100000).toFixed(1).replace(/\.0$/, "")}L`;
+  if (amount >= 1000) return `₹${(amount / 1000).toFixed(amount >= 10000 ? 0 : 1).replace(/\.0$/, "")}k`;
+  return `₹${Math.round(amount)}`;
 }
 
 /** For "YYYY-MM-DD" strings, read as local dates so the weekday never shifts across time zones. */
@@ -584,4 +619,11 @@ function countDays(from: string, to: string): { weekday: number; weekend: number
     else counts.weekday += 1;
   }
   return counts;
+}
+
+/** Days of the range that have happened, so "a day" isn't diluted by the rest of the current month. */
+function daysSoFar(from: string, to: string): number {
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(Math.min(new Date(`${to}T00:00:00`).getTime(), new Date().setHours(0, 0, 0, 0)));
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1);
 }

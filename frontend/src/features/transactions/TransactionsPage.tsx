@@ -1,15 +1,18 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { Account } from "../../api/accounts";
 import type { Allocation, Transaction } from "../../api/transactions";
 import { Dialog } from "../../components/Dialog";
+import { AccountSelect, MonthPicker } from "../../components/Filters";
 import { Icon } from "../../components/Icon";
-import { formatLocalDate, formatMoney, formatSignedMoney } from "../../lib/format";
-import { currentMonth, formatMonth, isMonth, monthRange, shiftMonth, type Month } from "../../lib/month";
+import { formatMoney, formatSignedMoney, formatWholeMoney, sumMoney } from "../../lib/format";
+import { hueOf } from "../../lib/hue";
+import { merchantName } from "../../lib/merchant";
+import { currentMonth, formatMonth, isMonth, monthRange, type Month } from "../../lib/month";
 import { useAccounts } from "../accounts/useAccounts";
 import { useCategories, type CategoryLabel } from "../categories/useCategories";
 import { ClassifyTransaction } from "./ClassifyTransaction";
-import { KIND_LABELS, MODE_LABELS } from "./labels";
+import { KIND_LABELS } from "./labels";
 import { useTransactions } from "./useTransactions";
 
 export function TransactionsPage() {
@@ -57,74 +60,25 @@ export function TransactionsPage() {
     <div className="page">
       <header className="page-header">
         <div>
-          <p className="page-header__eyebrow">Ledger</p>
-          <h1 className="page-header__title">Transactions</h1>
+          <p className="page-header__eyebrow">Transactions</p>
+          <h1 className="page-header__title">{formatMonth(month)}</h1>
           <p className="page-header__subtitle">
-            {selectedAccount ? selectedAccount.nickname : "All accounts"} · {formatMonth(month)}
+            {selectedAccount ? selectedAccount.nickname : "All accounts"} · every rupee in and out
           </p>
         </div>
-      </header>
-
-      <div className="toolbar">
-        <div className="month-picker" role="group" aria-label="Month">
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Previous month"
-            onClick={() => updateFilter({ month: shiftMonth(month, -1) })}
-          >
-            <Icon name="chevronLeft" />
-          </button>
-          <input
-            type="month"
-            className="month-picker__input"
-            value={month}
-            onChange={(event) => {
-              if (isMonth(event.target.value)) updateFilter({ month: event.target.value });
-            }}
-            aria-label="Choose month"
-          />
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Next month"
-            onClick={() => updateFilter({ month: shiftMonth(month, 1) })}
-          >
-            <Icon name="chevronRight" />
-          </button>
+        <div className="toolbar">
+          <MonthPicker month={month} onChange={(next) => updateFilter({ month: next })} />
+          <AccountSelect accounts={accounts} value={accountId} onChange={(next) => updateFilter({ account: next })} />
+          <label className={`toggle${onlyUnclassified ? " toggle--on" : ""}`}>
+            <input
+              type="checkbox"
+              checked={onlyUnclassified}
+              onChange={(event) => updateFilter({ unclassified: event.target.checked })}
+            />
+            Only unclassified
+          </label>
         </div>
-
-        <label className="toolbar__select">
-          <span className="sr-only">Account</span>
-          <select
-            className="input"
-            value={accountId ?? ""}
-            onChange={(event) => updateFilter({ account: event.target.value === "" ? null : event.target.value })}
-          >
-            <option value="">All accounts</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.nickname}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className={`toggle${onlyUnclassified ? " toggle--on" : ""}`}>
-          <input
-            type="checkbox"
-            checked={onlyUnclassified}
-            onChange={(event) => updateFilter({ unclassified: event.target.checked })}
-          />
-          Only unclassified
-        </label>
-
-        {month !== currentMonth() && (
-          <button type="button" className="button button--ghost button--sm" onClick={() => updateFilter({ month: currentMonth() })}>
-            This month
-          </button>
-        )}
-      </div>
+      </header>
 
       {state.status === "error" ? (
         <div className="callout callout--error" role="alert">
@@ -145,7 +99,7 @@ export function TransactionsPage() {
             <Total label="Spent" icon="arrowUp" tone="out" value={data?.spending ?? null} />
             <Total label="Income" icon="arrowDown" tone="in" value={data?.income ?? null} />
             <Total label="Invested" icon="chart" tone="neutral" value={data?.invested ?? null} />
-            <Total label="Lent" icon="split" tone="neutral" value={data?.lent ?? null} />
+            <Total label="Lent" icon="split" tone="lent" value={data?.lent ?? null} />
             <div className={`metric ${data && data.unclassifiedCount > 0 ? "metric--attention" : ""}`}>
               <span className="metric__icon">
                 <Icon name="list" />
@@ -238,7 +192,7 @@ export function TransactionsPage() {
 interface TotalProps {
   label: string;
   icon: "arrowDown" | "arrowUp" | "wallet" | "chart" | "split";
-  tone: "in" | "out" | "neutral";
+  tone: "in" | "out" | "neutral" | "lent";
   value: number | null;
   signed?: boolean;
 }
@@ -278,63 +232,91 @@ function Ledger({ transactions, accountsById, categoryLabels, showAccount, onCla
 
   return (
     <div className="ledger">
-      <table className="table table--ledger">
-        <thead>
-          <tr>
-            <th scope="col">Description</th>
-            {showAccount && <th scope="col">Account</th>}
-            <th scope="col" className="table__num">
-              Amount
-            </th>
-            <th scope="col" className="table__num">
-              Balance
-            </th>
-          </tr>
-        </thead>
-        {groups.map(({ date, rows }) => (
-          <tbody key={date}>
-            <tr className="table__group">
-              <th scope="rowgroup" colSpan={showAccount ? 4 : 3}>
-                {formatLocalDate(date)}
-              </th>
-            </tr>
-            {rows.map((transaction) => (
-              <tr key={transaction.id}>
-                <td>
-                  <div className="table__description">
-                    {transaction.paymentMode && (
-                      <span className={`mode mode--${transaction.paymentMode.toLowerCase()}`}>
-                        {MODE_LABELS[transaction.paymentMode]}
-                      </span>
-                    )}
-                    <span className="table__narration" title={transaction.description}>
-                      {transaction.description}
-                    </span>
-                  </div>
-                  <ClassificationTag
-                    allocations={transaction.allocations}
-                    categoryLabels={categoryLabels}
-                    onClick={() => onClassify(transaction)}
-                  />
-                </td>
-                {showAccount && (
-                  <td className="table__muted table__account">
-                    {accountsById.get(transaction.accountId)?.nickname ?? "—"}
-                  </td>
-                )}
-                <td className={`table__num amount ${transaction.amount < 0 ? "amount--out" : "amount--in"}`}>
-                  {formatSignedMoney(transaction.amount)}
-                </td>
-                <td className="table__num table__muted">
-                  {transaction.balanceAfter !== null ? formatMoney(transaction.balanceAfter) : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        ))}
-      </table>
+      {groups.map(({ date, rows }) => {
+        const out = sumMoney(rows.filter((row) => row.amount < 0).map((row) => -row.amount));
+        const moneyIn = sumMoney(rows.filter((row) => row.amount > 0).map((row) => row.amount));
+        return (
+          <section key={date} className="day" aria-label={formatDay(date)}>
+            <header className="day__head">
+              <h2 className="day__date">{formatDay(date)}</h2>
+              <p className="day__total num">
+                {out > 0 && <span>{formatWholeMoney(out)} out</span>}
+                {moneyIn > 0 && <span className="day__in">{formatWholeMoney(moneyIn)} in</span>}
+              </p>
+            </header>
+            <ul className="day__rows">
+              {rows.map((transaction) => (
+                <LedgerRow
+                  key={transaction.id}
+                  transaction={transaction}
+                  account={showAccount ? accountsById.get(transaction.accountId) : undefined}
+                  categoryLabels={categoryLabels}
+                  onClassify={() => onClassify(transaction)}
+                />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
+}
+
+function LedgerRow({
+  transaction,
+  account,
+  categoryLabels,
+  onClassify,
+}: {
+  transaction: Transaction;
+  account: Account | undefined;
+  categoryLabels: Map<string, CategoryLabel>;
+  onClassify: () => void;
+}) {
+  const name = merchantName(transaction.description);
+  const category = topCategory(transaction.allocations, categoryLabels);
+  const style = category !== null ? ({ "--hue": hueOf(category) } as CSSProperties) : undefined;
+  const credit = transaction.amount > 0;
+
+  return (
+    <li className={`txn${category === null ? " txn--plain" : ""}`} style={style}>
+      <span className="txn__avatar" aria-hidden="true">
+        {name.charAt(0)}
+      </span>
+      <div className="txn__main">
+        <p className="txn__name" title={transaction.description}>
+          {name}
+        </p>
+        {account && <p className="txn__meta">{account.nickname}</p>}
+      </div>
+      <div className="txn__tag">
+        <ClassificationTag allocations={transaction.allocations} categoryLabels={categoryLabels} onClick={onClassify} />
+      </div>
+      <div className="txn__amounts num">
+        <span className={`txn__amount${credit ? " txn__amount--in" : ""}`}>
+          {credit ? formatSignedMoney(transaction.amount) : formatMoney(-transaction.amount)}
+        </span>
+        {transaction.balanceAfter !== null && (
+          <span className="txn__balance">Bal {formatWholeMoney(transaction.balanceAfter)}</span>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** The top-level category a row is coloured by; splits take their first piece. */
+function topCategory(allocations: Allocation[], categoryLabels: Map<string, CategoryLabel>): string | null {
+  const [first] = allocations;
+  if (first === undefined || first.categoryId === null) return null;
+  const label = categoryLabels.get(first.categoryId);
+  if (label === undefined) return null;
+  return label.parentName ?? label.name;
+}
+
+const dayFormat = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short" });
+
+function formatDay(isoDate: string): string {
+  return dayFormat.format(new Date(`${isoDate}T00:00:00`));
 }
 
 function ClassificationTag({
@@ -385,6 +367,7 @@ function LedgerSkeleton() {
     <div className="ledger ledger--skeleton" aria-label="Loading transactions">
       {[0, 1, 2, 3, 4, 5].map((i) => (
         <div key={i} className="ledger__skeleton-row">
+          <span className="skeleton skeleton--avatar" />
           <span className="skeleton skeleton--line" />
           <span className="skeleton skeleton--amount" />
         </div>
