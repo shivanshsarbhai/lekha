@@ -1333,6 +1333,62 @@ a.button {
   color: var(--out);
 }
 
+.metric--attention .metric__icon {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.metric__of {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.tag--unclassified {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
+.tag--expense {
+  background: var(--out-soft);
+  border-color: transparent;
+  color: var(--out);
+}
+
+.tag--income {
+  background: var(--in-soft);
+  border-color: transparent;
+  color: var(--in);
+}
+
+.tag--investment,
+.tag--split {
+  background: var(--brand-soft);
+  border-color: transparent;
+  color: var(--brand);
+}
+
+.tag--transfer,
+.tag--lent {
+  background: var(--info-soft);
+  border-color: transparent;
+  color: var(--info);
+}
+
 .skeleton--value {
   display: inline-block;
   width: 6rem;

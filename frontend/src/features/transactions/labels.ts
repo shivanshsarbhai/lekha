@@ -1,4 +1,4 @@
-import type { PaymentMode } from "../../api/transactions";
+import type { AllocationKind, PaymentMode } from "../../api/transactions";
 
 export const MODE_LABELS: Record<PaymentMode, string> = {
   UPI: "UPI",
@@ -9,4 +9,12 @@ export const MODE_LABELS: Record<PaymentMode, string> = {
   ATM: "ATM",
   CHEQUE: "Cheque",
   OTHER: "Other",
+};
+
+export const KIND_LABELS: Record<AllocationKind, string> = {
+  EXPENSE: "Expense",
+  INCOME: "Income",
+  TRANSFER: "Transfer",
+  INVESTMENT: "Investment",
+  LENT: "Lent",
 };

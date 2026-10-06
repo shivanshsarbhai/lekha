@@ -2,7 +2,23 @@ import { apiGet } from "./client";
 
 export type PaymentMode = "UPI" | "CARD" | "NEFT" | "IMPS" | "RTGS" | "ATM" | "CHEQUE" | "OTHER";
 
-/** Mirrors Transaction.java. */
+/** Mirrors AllocationKind.java. */
+export type AllocationKind = "EXPENSE" | "INCOME" | "TRANSFER" | "INVESTMENT" | "LENT";
+
+/** Mirrors Allocation.java. One piece of a transaction; a transaction's pieces add up exactly to its amount. */
+export interface Allocation {
+  /** Regenerated on every save, so never keep one across saves. */
+  id: string;
+  transactionId: string;
+  kind: AllocationKind;
+  /** Look the name up in the category tree. Always null for TRANSFER and LENT. */
+  categoryId: string | null;
+  /** Same sign rule as the transaction: negative is money out. */
+  amount: number;
+  note: string | null;
+}
+
+/** Mirrors ListedTransaction.java: the bank's fields at the top level, plus how it has been classified. */
 export interface Transaction {
   id: string;
   accountId: string;
@@ -16,14 +32,23 @@ export interface Transaction {
   paymentMode: PaymentMode | null;
   metadata: Record<string, string>;
   createdAt: string;
+  /** Empty means unclassified. Sorted by kind, then larger amount first. */
+  allocations: Allocation[];
 }
 
-/** Mirrors TransactionList.java. Totals are summed exactly on the server; moneyOut is negative. */
+/** Mirrors TransactionList.java. Every total is summed exactly on the server. */
 export interface TransactionList {
   transactions: Transaction[];
+  /** Cash flow, as the bank sees it: moneyOut is negative and transfers count. */
   moneyIn: number;
   moneyOut: number;
   net: number;
+  /** Classified totals, positive in the usual case: expenses net of refunds, and so on. Transfers count in none. */
+  spending: number;
+  income: number;
+  invested: number;
+  lent: number;
+  unclassifiedCount: number;
 }
 
 export interface TransactionFilter {

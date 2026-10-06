@@ -22,10 +22,13 @@ public class TransactionService {
 
 	private final TransactionRepository repository;
 
+	private final AllocationRepository allocations;
+
 	private final AccountService accounts;
 
-	TransactionService(TransactionRepository repository, AccountService accounts) {
+	TransactionService(TransactionRepository repository, AllocationRepository allocations, AccountService accounts) {
 		this.repository = repository;
+		this.allocations = allocations;
 		this.accounts = accounts;
 	}
 
@@ -45,9 +48,20 @@ public class TransactionService {
 		}
 
 		List<Transaction> transactions = repository.findBetween(accountId, from, to);
+		Map<UUID, List<Allocation>> allocationsById = allocations
+			.findByTransactionIds(transactions.stream().map(Transaction::id).toList());
+		List<ListedTransaction> listed = transactions.stream()
+			.map(transaction -> new ListedTransaction(transaction,
+					allocationsById.getOrDefault(transaction.id(), List.of())))
+			.toList();
+		List<Allocation> pieces = allocationsById.values().stream().flatMap(List::stream).toList();
+
 		BigDecimal moneyIn = sum(transactions, amount -> amount.signum() > 0);
 		BigDecimal moneyOut = sum(transactions, amount -> amount.signum() < 0);
-		return new TransactionList(transactions, moneyIn, moneyOut, moneyIn.add(moneyOut));
+		return new TransactionList(listed, moneyIn, moneyOut, moneyIn.add(moneyOut),
+				sum(pieces, AllocationKind.EXPENSE).negate(), sum(pieces, AllocationKind.INCOME),
+				sum(pieces, AllocationKind.INVESTMENT).negate(), sum(pieces, AllocationKind.LENT).negate(),
+				(int) listed.stream().filter(transaction -> !transaction.isClassified()).count());
 	}
 
 	/**
@@ -79,6 +93,13 @@ public class TransactionService {
 
 	private static BigDecimal sum(List<Transaction> transactions, Predicate<BigDecimal> include) {
 		return transactions.stream().map(Transaction::amount).filter(include).reduce(ZERO_MONEY, BigDecimal::add);
+	}
+
+	private static BigDecimal sum(List<Allocation> pieces, AllocationKind kind) {
+		return pieces.stream()
+			.filter(piece -> piece.kind() == kind)
+			.map(Allocation::amount)
+			.reduce(ZERO_MONEY, BigDecimal::add);
 	}
 
 	/**

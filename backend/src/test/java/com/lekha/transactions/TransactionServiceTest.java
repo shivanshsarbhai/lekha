@@ -32,7 +32,8 @@ import com.lekha.accounts.AccountService;
  */
 @JdbcTest
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-@Import({ TestcontainersConfiguration.class, TransactionRepository.class, TransactionService.class })
+@Import({ TestcontainersConfiguration.class, TransactionRepository.class, AllocationRepository.class,
+		TransactionService.class })
 class TransactionServiceTest {
 
 	@Autowired
@@ -40,6 +41,9 @@ class TransactionServiceTest {
 
 	@Autowired
 	private TransactionRepository repository;
+
+	@Autowired
+	private AllocationRepository allocations;
 
 	@Autowired
 	private JdbcClient jdbc;
@@ -125,7 +129,7 @@ class TransactionServiceTest {
 		TransactionList list = service.list(null, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
 
 		assertThat(list.transactions())
-				.extracting(Transaction::transactionDate)
+				.extracting(listed -> listed.transaction().transactionDate())
 				.containsExactly(LocalDate.of(2026, 9, 5), LocalDate.of(2026, 9, 3), LocalDate.of(2026, 9, 1));
 		assertThat(list.moneyIn()).isEqualTo(new BigDecimal("150000.00"));
 		assertThat(list.moneyOut()).isEqualTo(new BigDecimal("-35450.30"));
@@ -137,9 +141,54 @@ class TransactionServiceTest {
 		TransactionList list = service.list(null, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
 
 		assertThat(list.transactions()).isEmpty();
-		assertThat(list.moneyIn()).isEqualTo(new BigDecimal("0.00"));
-		assertThat(list.moneyOut()).isEqualTo(new BigDecimal("0.00"));
-		assertThat(list.net()).isEqualTo(new BigDecimal("0.00"));
+		assertThat(List.of(list.moneyIn(), list.moneyOut(), list.net(), list.spending(), list.income(),
+				list.invested(), list.lent()))
+			.containsOnly(new BigDecimal("0.00"));
+		assertThat(list.unclassifiedCount()).isZero();
+	}
+
+	@Test
+	void listAttachesEachTransactionsAllocations() {
+		Transaction dinner = transaction(hdfc, LocalDate.of(2026, 9, 3), "-2000.00");
+		Transaction chai = transaction(hdfc, LocalDate.of(2026, 9, 4), "-20.00");
+		service.recordNew(List.of(dinner, chai));
+		Allocation food = allocation(dinner, AllocationKind.EXPENSE, "-500.00");
+		Allocation lent = allocation(dinner, AllocationKind.LENT, "-1500.00");
+		allocations.replace(dinner.id(), List.of(food, lent));
+
+		TransactionList list = service.list(null, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+
+		assertThat(list.transactions()).containsExactly(new ListedTransaction(chai, List.of()),
+				new ListedTransaction(dinner, List.of(food, lent)));
+		assertThat(list.unclassifiedCount()).isEqualTo(1);
+	}
+
+	@Test
+	void listTotalsCountOnlyWhatEachPieceReallyIs() {
+		Transaction salary = transaction(hdfc, LocalDate.of(2026, 9, 1), "150000.00");
+		Transaction dinner = transaction(hdfc, LocalDate.of(2026, 9, 3), "-2000.00");
+		Transaction refund = transaction(hdfc, LocalDate.of(2026, 9, 4), "199.00");
+		Transaction sip = transaction(hdfc, LocalDate.of(2026, 9, 5), "-10000.00");
+		Transaction toSavings = transaction(hdfc, LocalDate.of(2026, 9, 6), "-50000.00");
+		Transaction repaid = transaction(hdfc, LocalDate.of(2026, 9, 7), "500.00");
+		Transaction unclassified = transaction(hdfc, LocalDate.of(2026, 9, 8), "-300.00");
+		service.recordNew(List.of(salary, dinner, refund, sip, toSavings, repaid, unclassified));
+		classify(salary, allocation(salary, AllocationKind.INCOME, "150000.00"));
+		classify(dinner, allocation(dinner, AllocationKind.EXPENSE, "-500.00"),
+				allocation(dinner, AllocationKind.LENT, "-1500.00"));
+		classify(refund, allocation(refund, AllocationKind.EXPENSE, "199.00"));
+		classify(sip, allocation(sip, AllocationKind.INVESTMENT, "-10000.00"));
+		classify(toSavings, allocation(toSavings, AllocationKind.TRANSFER, "-50000.00"));
+		classify(repaid, allocation(repaid, AllocationKind.LENT, "500.00"));
+
+		TransactionList list = service.list(null, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+
+		assertThat(list.spending()).isEqualTo(new BigDecimal("301.00"));
+		assertThat(list.income()).isEqualTo(new BigDecimal("150000.00"));
+		assertThat(list.invested()).isEqualTo(new BigDecimal("10000.00"));
+		assertThat(list.lent()).isEqualTo(new BigDecimal("1000.00"));
+		assertThat(list.unclassifiedCount()).isEqualTo(1);
+		assertThat(list.moneyOut()).isEqualTo(new BigDecimal("-62300.00"));
 	}
 
 	@Test
@@ -150,7 +199,7 @@ class TransactionServiceTest {
 
 		TransactionList list = service.list(scapia, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
 
-		assertThat(list.transactions()).extracting(Transaction::accountId).containsExactly(scapia);
+		assertThat(list.transactions()).extracting(listed -> listed.transaction().accountId()).containsExactly(scapia);
 		assertThat(list.moneyIn()).isEqualTo(new BigDecimal("0.00"));
 		assertThat(list.moneyOut()).isEqualTo(new BigDecimal("-2000.00"));
 	}
@@ -190,6 +239,14 @@ class TransactionServiceTest {
 				.param("nickname", nickname)
 				.update();
 		return id;
+	}
+
+	private void classify(Transaction transaction, Allocation... pieces) {
+		allocations.replace(transaction.id(), List.of(pieces));
+	}
+
+	private static Allocation allocation(Transaction transaction, AllocationKind kind, String amount) {
+		return Allocation.create(transaction.id(), kind, null, new BigDecimal(amount), null);
 	}
 
 	private static Transaction transaction(UUID accountId, LocalDate date, String amount) {

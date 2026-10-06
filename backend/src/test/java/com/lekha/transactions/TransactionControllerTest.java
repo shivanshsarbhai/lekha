@@ -39,8 +39,12 @@ class TransactionControllerTest {
 		Transaction swiggy = new Transaction(UUID.fromString("22222222-2222-2222-2222-222222222222"), ACCOUNT_ID,
 				LocalDate.of(2026, 9, 3), null, "UPI-SWIGGY", new BigDecimal("-450.00"), new BigDecimal("9550.00"),
 				PaymentMode.UPI, Map.of(), Instant.parse("2026-10-01T10:00:00Z"));
-		given(service.list(null, SEP_1, SEP_30)).willReturn(new TransactionList(List.of(swiggy),
-				new BigDecimal("0.00"), new BigDecimal("-450.00"), new BigDecimal("-450.00")));
+		Allocation food = new Allocation(UUID.fromString("44444444-4444-4444-4444-444444444444"), swiggy.id(),
+				AllocationKind.EXPENSE, null, new BigDecimal("-450.00"), null);
+		given(service.list(null, SEP_1, SEP_30)).willReturn(new TransactionList(
+				List.of(new ListedTransaction(swiggy, List.of(food))), new BigDecimal("0.00"),
+				new BigDecimal("-450.00"), new BigDecimal("-450.00"), new BigDecimal("450.00"), new BigDecimal("0.00"),
+				new BigDecimal("0.00"), new BigDecimal("0.00"), 0));
 
 		var response = assertThat(mvc.get().uri("/api/v1/transactions?from=2026-09-01&to=2026-09-30"))
 				.hasStatusOk()
@@ -48,14 +52,19 @@ class TransactionControllerTest {
 
 		response.extractingPath("$.transactions[0].id").isEqualTo("22222222-2222-2222-2222-222222222222");
 		response.extractingPath("$.transactions[0].description").isEqualTo("UPI-SWIGGY");
+		response.extractingPath("$.transactions[0].allocations[0].kind").isEqualTo("EXPENSE");
+		response.doesNotHavePath("$.transactions[0].transaction");
 		response.extractingPath("$.transactions.length()").isEqualTo(1);
 		response.hasPath("$.moneyIn").hasPath("$.moneyOut").hasPath("$.net");
+		response.hasPath("$.spending").hasPath("$.income").hasPath("$.invested").hasPath("$.lent");
+		response.extractingPath("$.unclassifiedCount").isEqualTo(0);
 	}
 
 	@Test
 	void listPassesTheAccountFilterThrough() {
-		given(service.list(ACCOUNT_ID, SEP_1, SEP_30)).willReturn(new TransactionList(List.of(),
-				new BigDecimal("0.00"), new BigDecimal("0.00"), new BigDecimal("0.00")));
+		BigDecimal zero = new BigDecimal("0.00");
+		given(service.list(ACCOUNT_ID, SEP_1, SEP_30))
+			.willReturn(new TransactionList(List.of(), zero, zero, zero, zero, zero, zero, zero, 0));
 
 		assertThat(mvc.get().uri("/api/v1/transactions?accountId={id}&from=2026-09-01&to=2026-09-30", ACCOUNT_ID))
 				.hasStatusOk()

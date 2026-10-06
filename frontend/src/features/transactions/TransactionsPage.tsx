@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { Account } from "../../api/accounts";
-import type { Transaction } from "../../api/transactions";
+import type { Allocation, Transaction } from "../../api/transactions";
 import { Icon } from "../../components/Icon";
 import { formatLocalDate, formatMoney, formatSignedMoney } from "../../lib/format";
 import { currentMonth, formatMonth, isMonth, monthRange, shiftMonth, type Month } from "../../lib/month";
 import { useAccounts } from "../accounts/useAccounts";
-import { MODE_LABELS } from "./labels";
+import { useCategories, type CategoryLabel } from "../categories/useCategories";
+import { KIND_LABELS, MODE_LABELS } from "./labels";
 import { useTransactions } from "./useTransactions";
 
 export function TransactionsPage() {
@@ -34,6 +35,8 @@ export function TransactionsPage() {
   }
 
   const selectedAccount = accountId !== null ? accountsById.get(accountId) : undefined;
+  const data = state.status === "success" ? state.data : null;
+  const { labels: categoryLabels } = useCategories();
 
   return (
     <div className="page">
@@ -115,30 +118,35 @@ export function TransactionsPage() {
       ) : (
         <>
           <dl className="metrics metrics--four">
-            <Total label="Cash in" icon="arrowDown" tone="in" value={state.status === "success" ? state.data.moneyIn : null} />
-            <Total
-              label="Cash out"
-              icon="arrowUp"
-              tone="out"
-              value={state.status === "success" ? Math.abs(state.data.moneyOut) : null}
-            />
-            <Total label="Net" icon="wallet" tone="neutral" value={state.status === "success" ? state.data.net : null} signed />
-            <div className="metric">
+            <Total label="Spent" icon="arrowUp" tone="out" value={data?.spending ?? null} />
+            <Total label="Income" icon="arrowDown" tone="in" value={data?.income ?? null} />
+            <Total label="Invested" icon="chart" tone="neutral" value={data?.invested ?? null} />
+            <Total label="Lent" icon="split" tone="neutral" value={data?.lent ?? null} />
+            <div className={`metric ${data && data.unclassifiedCount > 0 ? "metric--attention" : ""}`}>
               <span className="metric__icon">
                 <Icon name="list" />
               </span>
               <div>
-                <dt className="metric__label">Transactions</dt>
+                <dt className="metric__label">Unclassified</dt>
                 <dd className="metric__value">
-                  {state.status === "success" ? state.data.transactions.length : <span className="skeleton skeleton--value" />}
+                  {data ? (
+                    <>
+                      {data.unclassifiedCount}
+                      <span className="metric__of"> of {data.transactions.length}</span>
+                    </>
+                  ) : (
+                    <span className="skeleton skeleton--value" />
+                  )}
                 </dd>
               </div>
             </div>
           </dl>
-          <p className="footnote">
-            <Icon name="info" size={14} /> Cash flow counts every movement, including transfers between your own
-            accounts and investments. True spending arrives with classification.
-          </p>
+          {data && (
+            <p className="footnote">
+              <Icon name="info" size={14} /> Cash flow: {formatMoney(data.moneyIn)} in · {formatMoney(Math.abs(data.moneyOut))}{" "}
+              out · {formatSignedMoney(data.net)} net. Transfers between your accounts count here but not above.
+            </p>
+          )}
 
           {state.status === "loading" && <LedgerSkeleton />}
           {state.status === "success" &&
@@ -156,7 +164,12 @@ export function TransactionsPage() {
                 </Link>
               </div>
             ) : (
-              <Ledger transactions={state.data.transactions} accountsById={accountsById} showAccount={accountId === null} />
+              <Ledger
+                transactions={state.data.transactions}
+                accountsById={accountsById}
+                categoryLabels={categoryLabels}
+                showAccount={accountId === null}
+              />
             ))}
         </>
       )}
@@ -166,7 +179,7 @@ export function TransactionsPage() {
 
 interface TotalProps {
   label: string;
-  icon: "arrowDown" | "arrowUp" | "wallet";
+  icon: "arrowDown" | "arrowUp" | "wallet" | "chart" | "split";
   tone: "in" | "out" | "neutral";
   value: number | null;
   signed?: boolean;
@@ -197,10 +210,11 @@ function Total({ label, icon, tone, value, signed = false }: TotalProps) {
 interface LedgerProps {
   transactions: Transaction[];
   accountsById: Map<string, Account>;
+  categoryLabels: Map<string, CategoryLabel>;
   showAccount: boolean;
 }
 
-function Ledger({ transactions, accountsById, showAccount }: LedgerProps) {
+function Ledger({ transactions, accountsById, categoryLabels, showAccount }: LedgerProps) {
   const groups = groupByDate(transactions);
 
   return (
@@ -238,6 +252,7 @@ function Ledger({ transactions, accountsById, showAccount }: LedgerProps) {
                       {transaction.description}
                     </span>
                   </div>
+                  <ClassificationTag allocations={transaction.allocations} categoryLabels={categoryLabels} />
                 </td>
                 {showAccount && (
                   <td className="table__muted table__account">
@@ -257,6 +272,34 @@ function Ledger({ transactions, accountsById, showAccount }: LedgerProps) {
       </table>
     </div>
   );
+}
+
+function ClassificationTag({
+  allocations,
+  categoryLabels,
+}: {
+  allocations: Allocation[];
+  categoryLabels: Map<string, CategoryLabel>;
+}) {
+  const [first] = allocations;
+  if (first === undefined) {
+    return <span className="tag tag--unclassified">Unclassified</span>;
+  }
+  if (allocations.length > 1) {
+    const kinds = [...new Set(allocations.map((allocation) => KIND_LABELS[allocation.kind]))].join(" + ");
+    return (
+      <span className="tag tag--split" title={allocations.map((a) => describe(a, categoryLabels)).join("\n")}>
+        <Icon name="split" size={12} /> Split · {kinds}
+      </span>
+    );
+  }
+  return <span className={`tag tag--${first.kind.toLowerCase()}`}>{describe(first, categoryLabels)}</span>;
+}
+
+function describe(allocation: Allocation, categoryLabels: Map<string, CategoryLabel>): string {
+  const category = allocation.categoryId !== null ? categoryLabels.get(allocation.categoryId) : undefined;
+  if (category === undefined) return KIND_LABELS[allocation.kind];
+  return category.parentName !== null ? `${category.parentName} › ${category.name}` : category.name;
 }
 
 function LedgerSkeleton() {
