@@ -40,6 +40,7 @@ class CategoryRepositoryTest {
 		assertThat(dining.kind()).isEqualTo(CategoryKind.EXPENSE);
 		assertThat(find(all, "Salary").kind()).isEqualTo(CategoryKind.INCOME);
 		assertThat(find(all, "Mutual funds").kind()).isEqualTo(CategoryKind.INVESTMENT);
+		assertThat(find(all, "Mutual fund redemption").kind()).isEqualTo(CategoryKind.TRANSFER);
 	}
 
 	@Test

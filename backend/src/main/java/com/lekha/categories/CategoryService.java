@@ -52,7 +52,7 @@ public class CategoryService {
 		CategoryKind resolvedKind;
 		if (parentId == null) {
 			if (kind == null) {
-				throw new InvalidCategoryException("A top-level category needs a kind: EXPENSE, INCOME or INVESTMENT");
+				throw new InvalidCategoryException("A top-level category needs a kind: EXPENSE, INCOME, INVESTMENT or TRANSFER");
 			}
 			resolvedKind = kind;
 		}

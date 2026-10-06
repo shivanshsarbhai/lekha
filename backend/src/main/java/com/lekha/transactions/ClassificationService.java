@@ -65,9 +65,13 @@ class ClassificationService {
 		Category category = categories.findCategory(categoryId)
 			.orElseThrow(() -> new InvalidAllocationException("No category with id " + categoryId));
 		if (!category.kind().name().equals(allocation.kind().name())) {
-			throw new InvalidAllocationException("\"" + category.name() + "\" is an " + category.kind()
-					+ " category, so it can't be used for an " + allocation.kind() + " allocation");
+			throw new InvalidAllocationException("\"" + category.name() + "\" is " + withArticle(category.kind().name())
+					+ " category, so it can't be used for " + withArticle(allocation.kind().name()) + " allocation");
 		}
+	}
+
+	private static String withArticle(String kind) {
+		return ("AEIOU".indexOf(kind.charAt(0)) >= 0 ? "an " : "a ") + kind;
 	}
 
 	private static void checkTotal(Transaction transaction, List<Allocation> pieces) {

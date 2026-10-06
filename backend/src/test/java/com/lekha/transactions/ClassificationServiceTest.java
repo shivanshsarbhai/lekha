@@ -56,6 +56,8 @@ class ClassificationServiceTest {
 
 	private UUID salary;
 
+	private UUID mutualFundRedemption;
+
 	@BeforeEach
 	void setUp() {
 		account = UUID.randomUUID();
@@ -65,6 +67,7 @@ class ClassificationServiceTest {
 				""").param("id", account).update();
 		diningOut = stubCategory("Dining out", CategoryKind.EXPENSE);
 		salary = stubCategory("Salary", CategoryKind.INCOME);
+		mutualFundRedemption = stubCategory("Mutual fund redemption", CategoryKind.TRANSFER);
 	}
 
 	@Test
@@ -134,9 +137,29 @@ class ClassificationServiceTest {
 		UUID dinner = insertTransaction("-2000.00");
 
 		assertThatThrownBy(() -> service.classify(dinner,
+				List.of(request(AllocationKind.LENT, diningOut, "-2000.00", null))))
+			.isInstanceOf(InvalidAllocationException.class)
+			.hasMessage("LENT allocations can't have a category");
+	}
+
+	@Test
+	void savesATransferWithItsCategory() {
+		UUID redemption = insertTransaction("25000.00");
+
+		assertThat(service.classify(redemption,
+				List.of(request(AllocationKind.TRANSFER, mutualFundRedemption, "25000.00", null))))
+			.extracting(Allocation::categoryId)
+			.containsExactly(mutualFundRedemption);
+	}
+
+	@Test
+	void rejectsAnExpenseCategoryOnATransfer() {
+		UUID dinner = insertTransaction("-2000.00");
+
+		assertThatThrownBy(() -> service.classify(dinner,
 				List.of(request(AllocationKind.TRANSFER, diningOut, "-2000.00", null))))
 			.isInstanceOf(InvalidAllocationException.class)
-			.hasMessage("TRANSFER allocations can't have a category");
+			.hasMessage("\"Dining out\" is an EXPENSE category, so it can't be used for a TRANSFER allocation");
 	}
 
 	@Test

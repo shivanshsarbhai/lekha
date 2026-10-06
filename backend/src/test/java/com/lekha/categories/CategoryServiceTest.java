@@ -79,7 +79,7 @@ class CategoryServiceTest {
 	@Test
 	void createRejectsATopLevelCategoryWithoutAKind() {
 		assertThatThrownBy(() -> service.create("Pets", null, null)).isInstanceOf(InvalidCategoryException.class)
-			.hasMessage("A top-level category needs a kind: EXPENSE, INCOME or INVESTMENT");
+			.hasMessage("A top-level category needs a kind: EXPENSE, INCOME, INVESTMENT or TRANSFER");
 	}
 
 	@Test

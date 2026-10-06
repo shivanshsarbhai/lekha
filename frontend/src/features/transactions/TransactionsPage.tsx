@@ -1,12 +1,14 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { Account } from "../../api/accounts";
 import type { Allocation, Transaction } from "../../api/transactions";
+import { Dialog } from "../../components/Dialog";
 import { Icon } from "../../components/Icon";
 import { formatLocalDate, formatMoney, formatSignedMoney } from "../../lib/format";
 import { currentMonth, formatMonth, isMonth, monthRange, shiftMonth, type Month } from "../../lib/month";
 import { useAccounts } from "../accounts/useAccounts";
 import { useCategories, type CategoryLabel } from "../categories/useCategories";
+import { ClassifyTransaction } from "./ClassifyTransaction";
 import { KIND_LABELS, MODE_LABELS } from "./labels";
 import { useTransactions } from "./useTransactions";
 
@@ -16,13 +18,16 @@ export function TransactionsPage() {
   const month: Month = isMonth(monthParam) ? monthParam : currentMonth();
   const accountId = searchParams.get("account");
 
+  const onlyUnclassified = searchParams.get("unclassified") === "1";
+
   const { from, to } = monthRange(month);
-  const state = useTransactions({ accountId, from, to });
+  const { state, applyClassification } = useTransactions({ accountId, from, to });
+  const [classifying, setClassifying] = useState<Transaction | null>(null);
   const { state: accountsState } = useAccounts();
   const accounts = accountsState.status === "success" ? accountsState.accounts : [];
   const accountsById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
 
-  function updateFilter(changes: { month?: Month; account?: string | null }) {
+  function updateFilter(changes: { month?: Month; account?: string | null; unclassified?: boolean }) {
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       if (changes.month !== undefined) next.set("month", changes.month);
@@ -30,13 +35,23 @@ export function TransactionsPage() {
         if (changes.account === null) next.delete("account");
         else next.set("account", changes.account);
       }
+      if (changes.unclassified !== undefined) {
+        if (changes.unclassified) next.set("unclassified", "1");
+        else next.delete("unclassified");
+      }
       return next;
     });
   }
 
   const selectedAccount = accountId !== null ? accountsById.get(accountId) : undefined;
   const data = state.status === "success" ? state.data : null;
-  const { labels: categoryLabels } = useCategories();
+  const { state: categoriesState, labels: categoryLabels } = useCategories();
+  const categoryTree = categoriesState.status === "success" ? categoriesState.tree : [];
+  const visible = data
+    ? onlyUnclassified
+      ? data.transactions.filter((transaction) => transaction.allocations.length === 0)
+      : data.transactions
+    : [];
 
   return (
     <div className="page">
@@ -93,6 +108,15 @@ export function TransactionsPage() {
               </option>
             ))}
           </select>
+        </label>
+
+        <label className={`toggle${onlyUnclassified ? " toggle--on" : ""}`}>
+          <input
+            type="checkbox"
+            checked={onlyUnclassified}
+            onChange={(event) => updateFilter({ unclassified: event.target.checked })}
+          />
+          Only unclassified
         </label>
 
         {month !== currentMonth() && (
@@ -164,15 +188,49 @@ export function TransactionsPage() {
                 </Link>
               </div>
             ) : (
-              <Ledger
-                transactions={state.data.transactions}
-                accountsById={accountsById}
-                categoryLabels={categoryLabels}
-                showAccount={accountId === null}
-              />
+              visible.length === 0 ? (
+                <div className="empty">
+                  <span className="empty__icon">
+                    <Icon name="check" size={26} />
+                  </span>
+                  <p className="empty__title">Everything in {formatMonth(month)} is classified</p>
+                  <p className="empty__text">Your spending totals for this month are complete.</p>
+                  <button type="button" className="button button--secondary" onClick={() => updateFilter({ unclassified: false })}>
+                    Show all transactions
+                  </button>
+                </div>
+              ) : (
+                <Ledger
+                  transactions={visible}
+                  accountsById={accountsById}
+                  categoryLabels={categoryLabels}
+                  showAccount={accountId === null}
+                  onClassify={setClassifying}
+                />
+              )
             ))}
         </>
       )}
+
+      <Dialog
+        open={classifying !== null}
+        onClose={() => setClassifying(null)}
+        title={classifying && classifying.allocations.length > 0 ? "Edit classification" : "Classify transaction"}
+        description="Split it into pieces if part was yours and part wasn't. The pieces must add up to the full amount."
+        size="lg"
+      >
+        {classifying && (
+          <ClassifyTransaction
+            transaction={classifying}
+            categories={categoryTree}
+            onSaved={(allocations) => {
+              applyClassification(classifying.id, allocations);
+              setClassifying(null);
+            }}
+            onCancel={() => setClassifying(null)}
+          />
+        )}
+      </Dialog>
     </div>
   );
 }
@@ -212,9 +270,10 @@ interface LedgerProps {
   accountsById: Map<string, Account>;
   categoryLabels: Map<string, CategoryLabel>;
   showAccount: boolean;
+  onClassify: (transaction: Transaction) => void;
 }
 
-function Ledger({ transactions, accountsById, categoryLabels, showAccount }: LedgerProps) {
+function Ledger({ transactions, accountsById, categoryLabels, showAccount, onClassify }: LedgerProps) {
   const groups = groupByDate(transactions);
 
   return (
@@ -252,7 +311,11 @@ function Ledger({ transactions, accountsById, categoryLabels, showAccount }: Led
                       {transaction.description}
                     </span>
                   </div>
-                  <ClassificationTag allocations={transaction.allocations} categoryLabels={categoryLabels} />
+                  <ClassificationTag
+                    allocations={transaction.allocations}
+                    categoryLabels={categoryLabels}
+                    onClick={() => onClassify(transaction)}
+                  />
                 </td>
                 {showAccount && (
                   <td className="table__muted table__account">
@@ -277,23 +340,38 @@ function Ledger({ transactions, accountsById, categoryLabels, showAccount }: Led
 function ClassificationTag({
   allocations,
   categoryLabels,
+  onClick,
 }: {
   allocations: Allocation[];
   categoryLabels: Map<string, CategoryLabel>;
+  onClick: () => void;
 }) {
   const [first] = allocations;
   if (first === undefined) {
-    return <span className="tag tag--unclassified">Unclassified</span>;
+    return (
+      <button type="button" className="tag tag--unclassified" onClick={onClick}>
+        <Icon name="plus" size={12} /> Classify
+      </button>
+    );
   }
   if (allocations.length > 1) {
     const kinds = [...new Set(allocations.map((allocation) => KIND_LABELS[allocation.kind]))].join(" + ");
     return (
-      <span className="tag tag--split" title={allocations.map((a) => describe(a, categoryLabels)).join("\n")}>
+      <button
+        type="button"
+        className="tag tag--split"
+        title={allocations.map((a) => `${describe(a, categoryLabels)}: ${formatMoney(Math.abs(a.amount))}`).join("\n")}
+        onClick={onClick}
+      >
         <Icon name="split" size={12} /> Split · {kinds}
-      </span>
+      </button>
     );
   }
-  return <span className={`tag tag--${first.kind.toLowerCase()}`}>{describe(first, categoryLabels)}</span>;
+  return (
+    <button type="button" className={`tag tag--${first.kind.toLowerCase()}`} onClick={onClick}>
+      {describe(first, categoryLabels)}
+    </button>
+  );
 }
 
 function describe(allocation: Allocation, categoryLabels: Map<string, CategoryLabel>): string {

@@ -55,7 +55,7 @@ class AllocationTest {
 	}
 
 	@ParameterizedTest
-	@EnumSource(value = AllocationKind.class, names = { "TRANSFER", "LENT" })
+	@EnumSource(value = AllocationKind.class, names = { "LENT" })
 	void rejectsACategoryOnKindsThatHaveNone(AllocationKind kind) {
 		assertThatThrownBy(() -> allocation(kind, CATEGORY, "-100.00", null))
 			.isInstanceOf(IllegalArgumentException.class)
@@ -63,7 +63,7 @@ class AllocationTest {
 	}
 
 	@ParameterizedTest
-	@EnumSource(value = AllocationKind.class, names = { "EXPENSE", "INCOME", "INVESTMENT" })
+	@EnumSource(value = AllocationKind.class, names = { "EXPENSE", "INCOME", "INVESTMENT", "TRANSFER" })
 	void allowsACategoryOnKindsThatHaveThem(AllocationKind kind) {
 		assertThat(allocation(kind, CATEGORY, "-100.00", null).categoryId()).isEqualTo(CATEGORY);
 	}

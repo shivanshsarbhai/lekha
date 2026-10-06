@@ -1,7 +1,7 @@
 import { apiGet } from "./client";
 
 /** Mirrors CategoryKind.java. */
-export type CategoryKind = "EXPENSE" | "INCOME" | "INVESTMENT";
+export type CategoryKind = "EXPENSE" | "INCOME" | "INVESTMENT" | "TRANSFER";
 
 /** Mirrors CategoryNode.java. Two levels: top-level categories, each with its sub-categories. */
 export interface CategoryNode {

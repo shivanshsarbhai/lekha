@@ -1,4 +1,4 @@
-import { apiGet } from "./client";
+import { apiGet, apiPut } from "./client";
 
 export type PaymentMode = "UPI" | "CARD" | "NEFT" | "IMPS" | "RTGS" | "ATM" | "CHEQUE" | "OTHER";
 
@@ -11,9 +11,18 @@ export interface Allocation {
   id: string;
   transactionId: string;
   kind: AllocationKind;
-  /** Look the name up in the category tree. Always null for TRANSFER and LENT. */
+  /** Look the name up in the category tree. Always null for LENT. */
   categoryId: string | null;
   /** Same sign rule as the transaction: negative is money out. */
+  amount: number;
+  note: string | null;
+}
+
+/** One element of the PUT body. Mirrors AllocationRequest.java. */
+export interface AllocationInput {
+  kind: AllocationKind;
+  categoryId: string | null;
+  /** Signed like the transaction. All pieces together must equal the transaction's amount exactly. */
   amount: number;
   note: string | null;
 }
@@ -65,4 +74,12 @@ export function listTransactions(filter: TransactionFilter, signal?: AbortSignal
     params.set("accountId", filter.accountId);
   }
   return apiGet<TransactionList>(`/transactions?${params.toString()}`, signal);
+}
+
+/**
+ * Replaces how a transaction is classified. One piece covering the whole amount is a simple classification, several
+ * pieces are a split, and an empty list makes it unclassified again. Resolves to the saved pieces, with new ids.
+ */
+export function classifyTransaction(transactionId: string, pieces: AllocationInput[]): Promise<Allocation[]> {
+  return apiPut<AllocationInput[], Allocation[]>(`/transactions/${transactionId}/allocations`, pieces);
 }

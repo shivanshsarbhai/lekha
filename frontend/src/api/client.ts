@@ -18,7 +18,7 @@ interface RequestOptions {
   signal?: AbortSignal | undefined;
 }
 
-async function request<T>(method: "GET" | "POST", path: string, options: RequestOptions = {}): Promise<T> {
+async function request<T>(method: "GET" | "POST" | "PUT", path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (options.contentType !== undefined) {
     headers["Content-Type"] = options.contentType;
@@ -63,6 +63,11 @@ export function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 export function apiPost<TBody, TResponse>(path: string, body: TBody): Promise<TResponse> {
   return request<TResponse>("POST", path, { body: JSON.stringify(body), contentType: "application/json" });
+}
+
+/** Replaces the resource at `path` with `body`. Sending the same body twice leaves the same result. */
+export function apiPut<TBody, TResponse>(path: string, body: TBody): Promise<TResponse> {
+  return request<TResponse>("PUT", path, { body: JSON.stringify(body), contentType: "application/json" });
 }
 
 /**

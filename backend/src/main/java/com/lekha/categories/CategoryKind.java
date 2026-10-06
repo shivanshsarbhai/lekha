@@ -1,8 +1,8 @@
 package com.lekha.categories;
 
-/** The kinds of allocation that can have a category. Transfers and money lent are described differently. */
+/** The kinds of allocation that can have a category. Money lent is described by its note instead. */
 public enum CategoryKind {
 
-	EXPENSE, INCOME, INVESTMENT
+	EXPENSE, INCOME, INVESTMENT, TRANSFER
 
 }

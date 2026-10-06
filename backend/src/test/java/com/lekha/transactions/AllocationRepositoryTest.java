@@ -107,10 +107,10 @@ class AllocationRepositoryTest {
 	}
 
 	@Test
-	void databaseRejectsACategoryOnATransfer() {
+	void databaseRejectsACategoryOnMoneyLent() {
 		assertThatThrownBy(() -> jdbc.sql("""
 				INSERT INTO allocations (id, transaction_id, kind, category_id, amount, note)
-				VALUES (:id, :transactionId, 'TRANSFER', :categoryId, -2000.00, NULL)
+				VALUES (:id, :transactionId, 'LENT', :categoryId, -2000.00, NULL)
 				""")
 				.param("id", UUID.randomUUID())
 				.param("transactionId", dinner)
