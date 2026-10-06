@@ -3,8 +3,8 @@
 **AI-powered personal finance analytics for urban professionals in India.**
 
 Lekha (लेखा, *"account"*) turns raw bank statements into an honest picture of where your money goes. It separates what
-you actually *spent* from money that merely *moved*, classifies transactions for you, flags anything unusual, and
-answers questions about your finances in plain English.
+you actually *spent* from money that merely *moved*, classifies transactions for you, breaks your finances down on
+interactive dashboards, flags anything unusual, and sums up each month in plain English.
 
 > **AI suggests, the server verifies.** Language models are good at reading messy text and bad at arithmetic. In Lekha,
 > AI proposes classifications, extracts meaning and explains results, but every rupee shown is computed by the server
@@ -42,7 +42,13 @@ Banking apps show you *cash flow*: money in and money out. That's not the same a
 - **Refunds** reduce spending in the original category instead of showing up as income.
 - **Editable two-level categories** (Food → Ordering in, Travel → Autos & cabs…) seeded with an India-first set: rent,
   maintenance, cook & house help, UPI-heavy food delivery, metro, PPF/EPF, NPS and more.
-- Dashboard totals for **spending, income, invested, lent and unclassified**, by month or any custom range.
+### Dashboards
+- **Headline totals** for spending, income, invested, lent and unclassified, for any month or custom range.
+- **Any granularity:** daily, weekly, monthly or yearly trends of spending, income and savings rate.
+- **Breakdowns that drill down:** spending by category, then sub-category, then the individual transactions behind
+  a number. You can also break it down by account or payment mode.
+- **Comparisons:** this month against last month and against your average, with the categories that changed most.
+- Every figure is an exact server-side aggregate of your allocations, so dashboard totals always match the ledger.
 
 ### AI features
 
@@ -54,14 +60,14 @@ New transactions arrive with a suggested kind and category. You accept with one 
   tree. The model can't invent categories, and suggestions are never saved without your confirmation.
 - **Measured.** A labelled evaluation set of synthetic transactions tracks accuracy whenever prompts or models change.
 
-#### Ask in plain English
-> *"How much more did I spend on food in September than in August?"*
-> *"What were my biggest expenses last month?"*
-> *"How much have I lent to friends this year?"*
+#### Monthly AI summary
+The dashboard opens with a short written summary of the month:
+> *"You spent ₹8,200 more than in August, mostly on Ordering in (+₹5,100). Investments stayed steady at ₹25,000, and
+> two unusual charges were flagged."*
 
-The model never sees your full ledger and never does the maths. It chooses among **read-only, typed query functions**
-(spending by category and period, top transactions, lent balance…). The server runs them against the database and the
-model only phrases the answer, so every number in a reply is exact.
+The server first computes the facts (totals, the biggest changes by category, anomalies) and the model only turns them
+into prose. Every figure is checked against the computed facts, so the summary can't contain a number the server didn't
+produce.
 
 #### Anomaly alerts
 - **Unusual spends:** a transaction far above your normal for that category ("₹4,200 at a restaurant, about 3× your usual").
@@ -91,11 +97,14 @@ flowchart LR
         TX[transactions<br/>ledger, allocations, totals]
         CA[categories]
         AC[accounts]
-        AI[ai<br/>classifier, assistant, anomalies]
+        AN[analytics<br/>dashboards & breakdowns]
+        AI[ai<br/>classifier, anomalies, monthly summary]
         ST --> TX
         TX --> CA
         TX --> AC
+        AN --> TX
         AI --> TX
+        AI --> AN
     end
 
     API -- "JDBC" --> PG[(PostgreSQL)]
@@ -107,7 +116,7 @@ flowchart LR
   *allocations*, so re-classifying never corrupts the bank record.
 - **Money is exact.** Amounts are `NUMERIC(14,2)` / `BigDecimal`, values with more than two decimals are rejected rather
   than rounded, and all totals are summed on the server.
-- **Package by feature.** Each feature (`accounts`, `statements`, `transactions`, `categories`, `ai`) owns its data and
+- **Package by feature.** Each feature (`accounts`, `statements`, `transactions`, `categories`, `analytics`, `ai`) owns its data and
   exposes a small public API. Dependencies point one way and there are no cycles.
 - **All-or-nothing writes.** Imports and classifications run in a single database transaction. Saving a split locks the
   transaction's row (`SELECT … FOR UPDATE`) so simultaneous edits can't interleave.
@@ -136,7 +145,7 @@ erDiagram
 | Layer | Technology |
 |---|---|
 | Backend | Java 25, Spring Boot 4, Spring JDBC (`JdbcClient`), Flyway, Apache PDFBox |
-| AI | Spring AI, Ollama (local LLM), tool calling |
+| AI | Spring AI, Ollama (local LLM), structured output |
 | Database | PostgreSQL 18 |
 | Frontend | React 19, TypeScript (strict), Vite, React Router |
 | Testing | JUnit 5, AssertJ, Mockito, Testcontainers (real PostgreSQL), MockMvc |
@@ -152,8 +161,10 @@ erDiagram
 | `PUT` | `/api/v1/transactions/{id}/allocations` | Classify or split a transaction (replaces the whole set) |
 | `GET` | `/api/v1/transactions/{id}/suggestion` | AI classification suggestion |
 | `GET` / `POST` / `PATCH` / `DELETE` | `/api/v1/categories` | Manage the category tree |
-| `POST` | `/api/v1/assistant/questions` | Ask a question in plain English |
+| `GET` | `/api/v1/analytics/trend?from=&to=&granularity=` | Spending, income and savings over time |
+| `GET` | `/api/v1/analytics/breakdown?from=&to=&by=&categoryId=` | Totals by category, sub-category, account or payment mode |
 | `GET` | `/api/v1/insights/anomalies` | Anomaly alerts for a period |
+| `GET` | `/api/v1/insights/summary?month=` | AI-written summary of a month |
 
 ---
 
@@ -179,7 +190,7 @@ docker compose up -d          # PostgreSQL on 127.0.0.1:15432
 ### 3. Local model
 
 ```bash
-ollama pull <model>           # any instruction-tuned model with tool calling, configured in application.yml
+ollama pull <model>           # any instruction-tuned model, configured in application.yml
 ```
 
 ### 4. Backend
@@ -215,12 +226,13 @@ lekha/
 │   ├── statements/     PDF parsing, reconciliation, import
 │   ├── transactions/   ledger, allocations, classification, totals
 │   ├── categories/     editable category tree
-│   ├── ai/             classifier, assistant, anomaly detection
+│   ├── analytics/      dashboard trends and breakdowns
+│   ├── ai/             classifier, anomaly detection, monthly summary
 │   └── web/            global error handling
 ├── backend/src/main/resources/db/migration/   Flyway migrations
 ├── frontend/src/
 │   ├── api/            typed API client, one module per resource
-│   ├── features/       accounts, statements, transactions, insights, assistant
+│   ├── features/       accounts, statements, transactions, dashboard, insights
 │   └── components/     shared UI
 └── compose.yaml        local PostgreSQL
 ```
@@ -234,6 +246,7 @@ lekha/
 Parsers are pluggable (`StatementParser`), and each new bank is a self-contained parser with its own reconciliation.
 
 ## Roadmap
+- Ask questions in plain English, answered by LLM tool calling over read-only queries
 - More banks and credit card statements
 - Pairing internal transfers across your own accounts automatically
 - Splitwise integration and per-person lent balances
