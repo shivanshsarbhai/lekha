@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.lekha.accounts.AccountNotFoundException;
+import com.lekha.analytics.InvalidQueryException;
 import com.lekha.accounts.DuplicateAccountNicknameException;
 import com.lekha.categories.CategoryInUseException;
 import com.lekha.categories.CategoryNotFoundException;
@@ -22,7 +23,7 @@ import com.lekha.transactions.TransactionNotFoundException;
 class ApiExceptionHandler {
 
 	@ExceptionHandler({ InvalidDateRangeException.class, InvalidCategoryException.class,
-			InvalidAllocationException.class })
+			InvalidAllocationException.class, InvalidQueryException.class })
 	ProblemDetail badRequest(RuntimeException ex) {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
 	}
