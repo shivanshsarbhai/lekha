@@ -20,6 +20,11 @@ public class TransactionService {
 
 	private static final BigDecimal ZERO_MONEY = new BigDecimal("0.00");
 
+	/** Metadata keys holding the bank's values once the user has corrected them. */
+	static final String ORIGINAL_DATE = "originalTransactionDate";
+
+	static final String ORIGINAL_AMOUNT = "originalAmount";
+
 	private final TransactionRepository repository;
 
 	private final AllocationRepository allocations;
@@ -91,6 +96,44 @@ public class TransactionService {
 		return saved;
 	}
 
+	/**
+	 * Corrects a transaction's date, description or amount. The first change to the date or amount keeps the bank's
+	 * value in the metadata, so a re-imported statement still recognises the row. A new amount no longer matches the
+	 * allocations, so they are cleared and the transaction becomes unclassified.
+	 */
+	@Transactional
+	ListedTransaction update(UUID id, @Nullable LocalDate transactionDate, @Nullable String description,
+			@Nullable BigDecimal amount) {
+		if (transactionDate == null || description == null || amount == null) {
+			throw new InvalidTransactionException("A transaction needs a date, a description and an amount");
+		}
+		Transaction existing = repository.findByIdForUpdate(id).orElseThrow(() -> new TransactionNotFoundException(id));
+
+		Map<String, String> metadata = new HashMap<>(existing.metadata());
+		if (!transactionDate.equals(existing.transactionDate())) {
+			metadata.putIfAbsent(ORIGINAL_DATE, existing.transactionDate().toString());
+		}
+		boolean amountChanged = amount.compareTo(existing.amount()) != 0;
+		if (amountChanged) {
+			metadata.putIfAbsent(ORIGINAL_AMOUNT, existing.amount().toPlainString());
+		}
+		Transaction updated;
+		try {
+			updated = new Transaction(id, existing.accountId(), transactionDate, existing.settlementDate(), description,
+					amount, existing.balanceAfter(), existing.paymentMode(), metadata, existing.createdAt());
+		}
+		catch (IllegalArgumentException ex) {
+			throw new InvalidTransactionException(ex.getMessage());
+		}
+
+		repository.update(updated);
+		if (amountChanged) {
+			allocations.replace(id, List.of());
+		}
+		return new ListedTransaction(updated,
+				allocations.findByTransactionIds(List.of(id)).getOrDefault(id, List.of()));
+	}
+
 	private static BigDecimal sum(List<Transaction> transactions, Predicate<BigDecimal> include) {
 		return transactions.stream().map(Transaction::amount).filter(include).reduce(ZERO_MONEY, BigDecimal::add);
 	}
@@ -104,14 +147,20 @@ public class TransactionService {
 
 	/**
 	 * The facts copied straight from the bank that identify a transaction. Excludes what our parsers derive, like
-	 * the description, so improving a parser doesn't make old rows look new.
+	 * the description, so improving a parser doesn't make old rows look new. Uses the bank's date and amount even
+	 * after the user corrects them, so an edited row still matches the statement it came from.
 	 */
 	private record Fingerprint(UUID accountId, LocalDate transactionDate, BigDecimal amount,
 			@Nullable BigDecimal balanceAfter, @Nullable String reference) {
 
 		static Fingerprint of(Transaction transaction) {
-			return new Fingerprint(transaction.accountId(), transaction.transactionDate(), transaction.amount(),
-					transaction.balanceAfter(), transaction.metadata().get("reference"));
+			Map<String, String> metadata = transaction.metadata();
+			String date = metadata.get(ORIGINAL_DATE);
+			String amount = metadata.get(ORIGINAL_AMOUNT);
+			return new Fingerprint(transaction.accountId(),
+					date == null ? transaction.transactionDate() : LocalDate.parse(date),
+					amount == null ? transaction.amount() : new BigDecimal(amount), transaction.balanceAfter(),
+					metadata.get("reference"));
 		}
 
 	}

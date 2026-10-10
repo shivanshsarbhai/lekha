@@ -1,4 +1,4 @@
-import type { Account } from "../../api/accounts";
+import type { ListedAccount } from "../../api/accounts";
 import { Icon } from "../../components/Icon";
 import { formatInstant } from "../../lib/format";
 import { INSTITUTION_LABELS, TYPE_LABELS } from "./labels";
@@ -10,13 +10,15 @@ export interface LastImport {
 }
 
 interface AccountListProps {
-  accounts: Account[];
+  accounts: ListedAccount[];
   lastImports: Record<string, LastImport>;
-  onImport: (account: Account) => void;
+  onImport: (account: ListedAccount) => void;
+  onEdit: (account: ListedAccount) => void;
+  onDelete: (account: ListedAccount) => void;
   onAdd: () => void;
 }
 
-export function AccountList({ accounts, lastImports, onImport, onAdd }: AccountListProps) {
+export function AccountList({ accounts, lastImports, onImport, onEdit, onDelete, onAdd }: AccountListProps) {
   if (accounts.length === 0) {
     return (
       <div className="empty">
@@ -42,6 +44,8 @@ export function AccountList({ accounts, lastImports, onImport, onAdd }: AccountL
           account={account}
           lastImport={lastImports[account.id]}
           onImport={() => onImport(account)}
+          onEdit={() => onEdit(account)}
+          onDelete={() => onDelete(account)}
         />
       ))}
     </ul>
@@ -49,12 +53,14 @@ export function AccountList({ accounts, lastImports, onImport, onAdd }: AccountL
 }
 
 interface AccountCardProps {
-  account: Account;
+  account: ListedAccount;
   lastImport: LastImport | undefined;
   onImport: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }
 
-function AccountCard({ account, lastImport, onImport }: AccountCardProps) {
+function AccountCard({ account, lastImport, onImport, onEdit, onDelete }: AccountCardProps) {
   return (
     <li className="account-card">
       <div className={`card-face card-face--${account.institution.toLowerCase()}`}>
@@ -72,7 +78,10 @@ function AccountCard({ account, lastImport, onImport }: AccountCardProps) {
         </div>
       </div>
 
-      <p className="account-card__added">Added {formatInstant(account.createdAt)}</p>
+      <p className="account-card__added">
+        Added {formatInstant(account.createdAt)} · {account.transactionCount}{" "}
+        {account.transactionCount === 1 ? "transaction" : "transactions"}
+      </p>
 
       <div className="account-card__footer">
         <span className="account-card__status">
@@ -89,9 +98,23 @@ function AccountCard({ account, lastImport, onImport }: AccountCardProps) {
             </>
           )}
         </span>
-        <button type="button" className="button button--secondary button--sm" onClick={onImport}>
-          <Icon name="upload" size={16} /> Import statement
-        </button>
+        <div className="account-card__actions">
+          <button type="button" className="icon-button" onClick={onEdit} aria-label={`Edit ${account.nickname}`} title="Edit">
+            <Icon name="edit" size={16} />
+          </button>
+          <button
+            type="button"
+            className="icon-button icon-button--danger"
+            onClick={onDelete}
+            aria-label={`Delete ${account.nickname}`}
+            title="Delete"
+          >
+            <Icon name="trash" size={16} />
+          </button>
+          <button type="button" className="button button--secondary button--sm" onClick={onImport}>
+            <Icon name="upload" size={16} /> Import statement
+          </button>
+        </div>
       </div>
     </li>
   );

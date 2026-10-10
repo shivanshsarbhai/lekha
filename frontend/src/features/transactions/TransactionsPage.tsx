@@ -12,6 +12,7 @@ import { currentMonth, formatMonth, isMonth, monthRange, type Month } from "../.
 import { useAccounts } from "../accounts/useAccounts";
 import { useCategories, type CategoryLabel } from "../categories/useCategories";
 import { ClassifyTransaction } from "./ClassifyTransaction";
+import { EditTransaction } from "./EditTransaction";
 import { KIND_LABELS } from "./labels";
 import { useTransactions } from "./useTransactions";
 
@@ -24,8 +25,9 @@ export function TransactionsPage() {
   const onlyUnclassified = searchParams.get("unclassified") === "1";
 
   const { from, to } = monthRange(month);
-  const { state, applyClassification } = useTransactions({ accountId, from, to });
+  const { state, applyClassification, applyEdit } = useTransactions({ accountId, from, to });
   const [classifying, setClassifying] = useState<Transaction | null>(null);
+  const [editing, setEditing] = useState<Transaction | null>(null);
   const { state: accountsState } = useAccounts();
   const accounts = accountsState.status === "success" ? accountsState.accounts : [];
   const accountsById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
@@ -160,6 +162,7 @@ export function TransactionsPage() {
                   categoryLabels={categoryLabels}
                   showAccount={accountId === null}
                   onClassify={setClassifying}
+                  onEdit={setEditing}
                 />
               )
             ))}
@@ -182,6 +185,24 @@ export function TransactionsPage() {
               setClassifying(null);
             }}
             onCancel={() => setClassifying(null)}
+          />
+        )}
+      </Dialog>
+
+      <Dialog
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        title="Edit transaction"
+        description="Correct what the statement got wrong. The account and running balance stay as the bank printed them."
+      >
+        {editing && (
+          <EditTransaction
+            transaction={editing}
+            onSaved={(edited) => {
+              applyEdit(edited);
+              setEditing(null);
+            }}
+            onCancel={() => setEditing(null)}
           />
         )}
       </Dialog>
@@ -225,9 +246,10 @@ interface LedgerProps {
   categoryLabels: Map<string, CategoryLabel>;
   showAccount: boolean;
   onClassify: (transaction: Transaction) => void;
+  onEdit: (transaction: Transaction) => void;
 }
 
-function Ledger({ transactions, accountsById, categoryLabels, showAccount, onClassify }: LedgerProps) {
+function Ledger({ transactions, accountsById, categoryLabels, showAccount, onClassify, onEdit }: LedgerProps) {
   const groups = groupByDate(transactions);
 
   return (
@@ -252,6 +274,7 @@ function Ledger({ transactions, accountsById, categoryLabels, showAccount, onCla
                   account={showAccount ? accountsById.get(transaction.accountId) : undefined}
                   categoryLabels={categoryLabels}
                   onClassify={() => onClassify(transaction)}
+                  onEdit={() => onEdit(transaction)}
                 />
               ))}
             </ul>
@@ -267,11 +290,13 @@ function LedgerRow({
   account,
   categoryLabels,
   onClassify,
+  onEdit,
 }: {
   transaction: Transaction;
   account: Account | undefined;
   categoryLabels: Map<string, CategoryLabel>;
   onClassify: () => void;
+  onEdit: () => void;
 }) {
   const name = merchantName(transaction.description);
   const category = topCategory(transaction.allocations, categoryLabels);
@@ -300,6 +325,9 @@ function LedgerRow({
           <span className="txn__balance">Bal {formatWholeMoney(transaction.balanceAfter)}</span>
         )}
       </div>
+      <button type="button" className="icon-button txn__edit" onClick={onEdit} aria-label={`Edit ${name}`} title="Edit">
+        <Icon name="edit" size={15} />
+      </button>
     </li>
   );
 }

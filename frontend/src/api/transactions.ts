@@ -76,6 +76,22 @@ export function listTransactions(filter: TransactionFilter, signal?: AbortSignal
   return apiGet<TransactionList>(`/transactions?${params.toString()}`, signal);
 }
 
+/** Body of PUT /api/v1/transactions/{id}. Mirrors UpdateTransactionRequest.java; every field is required. */
+export interface TransactionEdit {
+  transactionDate: string;
+  description: string;
+  /** Signed: negative is money out. */
+  amount: number;
+}
+
+/**
+ * Corrects a transaction. The server keeps the bank's original date and amount in `metadata`, so re-importing the
+ * statement still skips this row. Changing the amount clears the classification; the result shows it.
+ */
+export function updateTransaction(id: string, edit: TransactionEdit): Promise<Transaction> {
+  return apiPut<TransactionEdit, Transaction>(`/transactions/${id}`, edit);
+}
+
 /**
  * Replaces how a transaction is classified. One piece covering the whole amount is a simple classification, several
  * pieces are a split, and an empty list makes it unclassified again. Resolves to the saved pieces, with new ids.

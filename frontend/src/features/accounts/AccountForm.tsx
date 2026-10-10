@@ -1,33 +1,40 @@
 import { useState } from "react";
-import { createAccount, type Account, type AccountType, type Institution } from "../../api/accounts";
+import {
+  createAccount,
+  updateAccount,
+  type Account,
+  type AccountType,
+  type Institution,
+  type ListedAccount,
+} from "../../api/accounts";
 import { Icon } from "../../components/Icon";
 import { INSTITUTION_LABELS, INSTITUTIONS, TYPE_LABELS } from "./labels";
 
 type SubmitState = { status: "idle" } | { status: "saving" } | { status: "error"; message: string };
 
-interface AddAccountFormProps {
-  onCreated: (account: Account) => void;
+interface AccountFormProps {
+  /** The account to edit; without it the form adds a new one. */
+  account?: ListedAccount;
+  onSaved: (account: Account) => void;
   onCancel: () => void;
 }
 
-export function AddAccountForm({ onCreated, onCancel }: AddAccountFormProps) {
-  const [nickname, setNickname] = useState("");
-  const [type, setType] = useState<AccountType>("BANK");
-  const [institution, setInstitution] = useState<Institution>("HDFC");
-  const [last4, setLast4] = useState("");
+export function AccountForm({ account, onSaved, onCancel }: AccountFormProps) {
+  const [nickname, setNickname] = useState(account?.nickname ?? "");
+  const [type, setType] = useState<AccountType>(account?.type ?? "BANK");
+  const [institution, setInstitution] = useState<Institution>(account?.institution ?? "HDFC");
+  const [last4, setLast4] = useState(account?.last4 ?? "");
   const [submit, setSubmit] = useState<SubmitState>({ status: "idle" });
+
+  /** Mirrors the server rule: statements already read as one bank's format pin the bank and type. */
+  const kindLocked = account !== undefined && account.transactionCount > 0;
 
   async function handleSubmit(event: { preventDefault(): void }) {
     event.preventDefault();
     setSubmit({ status: "saving" });
+    const input = { nickname, type, institution, last4: last4.trim() === "" ? null : last4.trim() };
     try {
-      const created = await createAccount({
-        nickname,
-        type,
-        institution,
-        last4: last4.trim() === "" ? null : last4.trim(),
-      });
-      onCreated(created);
+      onSaved(account ? await updateAccount(account.id, input) : await createAccount(input));
     } catch (error: unknown) {
       setSubmit({ status: "error", message: error instanceof Error ? error.message : "Unknown error" });
     }
@@ -37,7 +44,7 @@ export function AddAccountForm({ onCreated, onCancel }: AddAccountFormProps) {
 
   return (
     <form className="form" onSubmit={handleSubmit}>
-      <fieldset className="field">
+      <fieldset className="field" disabled={kindLocked}>
         <legend className="field__label">Type</legend>
         <div className="segmented">
           {(Object.keys(TYPE_LABELS) as AccountType[]).map((option) => (
@@ -76,6 +83,7 @@ export function AddAccountForm({ onCreated, onCancel }: AddAccountFormProps) {
             className="input"
             value={institution}
             onChange={(e) => setInstitution(e.target.value as Institution)}
+            disabled={kindLocked}
           >
             {INSTITUTIONS.map((option) => (
               <option key={option} value={option}>
@@ -102,6 +110,13 @@ export function AddAccountForm({ onCreated, onCancel }: AddAccountFormProps) {
         </label>
       </div>
 
+      {kindLocked && (
+        <p className="form__hint">
+          <Icon name="info" size={14} /> The bank and type can't change once statements are imported. To change them,
+          delete this account and add it again.
+        </p>
+      )}
+
       {submit.status === "error" && (
         <p className="form__error" role="alert">
           {submit.message}
@@ -113,7 +128,7 @@ export function AddAccountForm({ onCreated, onCancel }: AddAccountFormProps) {
           Cancel
         </button>
         <button className="button" type="submit" disabled={saving}>
-          {saving ? "Saving…" : "Add account"}
+          {saving ? "Saving…" : account ? "Save changes" : "Add account"}
         </button>
       </div>
     </form>

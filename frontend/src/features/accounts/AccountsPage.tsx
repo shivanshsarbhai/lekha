@@ -1,29 +1,33 @@
 import { useState } from "react";
-import type { Account } from "../../api/accounts";
+import type { ListedAccount } from "../../api/accounts";
 import type { StatementImport } from "../../api/statements";
 import { Dialog } from "../../components/Dialog";
 import { Icon } from "../../components/Icon";
 import { ImportStatement } from "../statements/ImportStatement";
+import { AccountForm } from "./AccountForm";
 import { AccountList, AccountListSkeleton, type LastImport } from "./AccountList";
-import { AddAccountForm } from "./AddAccountForm";
+import { DeleteAccount } from "./DeleteAccount";
 import { INSTITUTION_LABELS } from "./labels";
 import { useAccounts } from "./useAccounts";
 
 export function AccountsPage() {
-  const { state, addAccount } = useAccounts();
+  const { state, addAccount, replaceAccount, removeAccount, countImported } = useAccounts();
   const [adding, setAdding] = useState(false);
-  const [importingInto, setImportingInto] = useState<Account | null>(null);
+  const [editing, setEditing] = useState<ListedAccount | null>(null);
+  const [deleting, setDeleting] = useState<ListedAccount | null>(null);
+  const [importingInto, setImportingInto] = useState<ListedAccount | null>(null);
   const [lastImports, setLastImports] = useState<Record<string, LastImport>>({});
 
   const accounts = state.status === "success" ? state.accounts : [];
   const banks = accounts.filter((account) => account.type === "BANK").length;
   const cards = accounts.filter((account) => account.type === "CREDIT_CARD").length;
 
-  function recordImport(account: Account, result: StatementImport) {
+  function recordImport(account: ListedAccount, result: StatementImport) {
     setLastImports((current) => ({
       ...current,
       [account.id]: { imported: result.imported.length, skipped: result.skipped, at: Date.now() },
     }));
+    countImported(account.id, result.imported.length);
   }
 
   return (
@@ -64,6 +68,8 @@ export function AccountsPage() {
           accounts={state.accounts}
           lastImports={lastImports}
           onImport={setImportingInto}
+          onEdit={setEditing}
+          onDelete={setDeleting}
           onAdd={() => setAdding(true)}
         />
       )}
@@ -74,13 +80,39 @@ export function AccountsPage() {
         title="Add an account"
         description="Lekha only needs a name for it. Nothing here connects to your bank."
       >
-        <AddAccountForm
-          onCreated={(account) => {
+        <AccountForm
+          onSaved={(account) => {
             addAccount(account);
             setAdding(false);
           }}
           onCancel={() => setAdding(false)}
         />
+      </Dialog>
+
+      <Dialog open={editing !== null} onClose={() => setEditing(null)} title="Edit account">
+        {editing && (
+          <AccountForm
+            account={editing}
+            onSaved={(account) => {
+              replaceAccount(account);
+              setEditing(null);
+            }}
+            onCancel={() => setEditing(null)}
+          />
+        )}
+      </Dialog>
+
+      <Dialog open={deleting !== null} onClose={() => setDeleting(null)} title="Delete account?">
+        {deleting && (
+          <DeleteAccount
+            account={deleting}
+            onDeleted={() => {
+              removeAccount(deleting.id);
+              setDeleting(null);
+            }}
+            onCancel={() => setDeleting(null)}
+          />
+        )}
       </Dialog>
 
       <Dialog

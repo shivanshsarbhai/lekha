@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   listTransactions,
   type Allocation,
+  type Transaction,
   type TransactionFilter,
   type TransactionList,
 } from "../../api/transactions";
@@ -35,11 +36,11 @@ export function useTransactions({ accountId, from, to }: TransactionFilter) {
   }, [accountId, from, to]);
 
   /**
-   * After a classification is saved: shows the saved pieces on that row at once, then re-fetches the list without a
-   * loading state, because only the server computes the totals.
+   * After a save: shows the change on that row at once, then re-fetches the list without a loading state, because
+   * only the server computes the totals. An edited date may also move the row out of this month.
    */
-  const applyClassification = useCallback(
-    (transactionId: string, allocations: Allocation[]) => {
+  const applyToRow = useCallback(
+    (transactionId: string, change: (transaction: Transaction) => Transaction) => {
       setState((current) =>
         current.status !== "success"
           ? current
@@ -48,7 +49,7 @@ export function useTransactions({ accountId, from, to }: TransactionFilter) {
               data: {
                 ...current.data,
                 transactions: current.data.transactions.map((transaction) =>
-                  transaction.id === transactionId ? { ...transaction, allocations } : transaction,
+                  transaction.id === transactionId ? change(transaction) : transaction,
                 ),
               },
             },
@@ -60,11 +61,19 @@ export function useTransactions({ accountId, from, to }: TransactionFilter) {
       listTransactions({ accountId, from, to }, controller.signal)
         .then((data) => setState({ status: "success", data }))
         .catch(() => {
-          // The row already shows the saved pieces; the totals catch up on the next load.
+          // The row already shows the saved change; the totals catch up on the next load.
         });
     },
     [accountId, from, to],
   );
 
-  return { state, applyClassification };
+  const applyClassification = useCallback(
+    (transactionId: string, allocations: Allocation[]) =>
+      applyToRow(transactionId, (transaction) => ({ ...transaction, allocations })),
+    [applyToRow],
+  );
+
+  const applyEdit = useCallback((edited: Transaction) => applyToRow(edited.id, () => edited), [applyToRow]);
+
+  return { state, applyClassification, applyEdit };
 }

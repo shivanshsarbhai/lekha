@@ -2,6 +2,8 @@ package com.lekha.accounts;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 
 import java.time.Instant;
 import java.util.List;
@@ -31,7 +33,7 @@ class AccountControllerTest {
 				AccountType.BANK, Institution.HDFC, "1234", Instant.parse("2026-01-01T10:00:00Z"));
 		Account scapia = new Account(UUID.fromString("22222222-2222-2222-2222-222222222222"), "Scapia Card",
 				AccountType.CREDIT_CARD, Institution.FEDERAL_BANK, null, Instant.parse("2026-02-01T10:00:00Z"));
-		given(service.listAccounts()).willReturn(List.of(hdfc, scapia));
+		given(service.listAccounts()).willReturn(List.of(new ListedAccount(hdfc, 42), new ListedAccount(scapia, 0)));
 
 		assertThat(mvc.get().uri("/api/v1/accounts"))
 				.hasStatusOk()
@@ -44,7 +46,8 @@ class AccountControllerTest {
 						    "type": "BANK",
 						    "institution": "HDFC",
 						    "last4": "1234",
-						    "createdAt": "2026-01-01T10:00:00Z"
+						    "createdAt": "2026-01-01T10:00:00Z",
+						    "transactionCount": 42
 						  },
 						  {
 						    "id": "22222222-2222-2222-2222-222222222222",
@@ -52,10 +55,80 @@ class AccountControllerTest {
 						    "type": "CREDIT_CARD",
 						    "institution": "FEDERAL_BANK",
 						    "last4": null,
-						    "createdAt": "2026-02-01T10:00:00Z"
+						    "createdAt": "2026-02-01T10:00:00Z",
+						    "transactionCount": 0
 						  }
 						]
 						""");
+	}
+
+	@Test
+	void updateAccountReturnsTheUpdatedAccount() {
+		UUID id = UUID.fromString("66666666-6666-6666-6666-666666666666");
+		Account updated = new Account(id, "Regalia Gold", AccountType.CREDIT_CARD, Institution.HDFC, null,
+				Instant.parse("2026-01-01T10:00:00Z"));
+		given(service.updateAccount(id, "Regalia Gold", AccountType.CREDIT_CARD, Institution.HDFC, null))
+			.willReturn(updated);
+
+		assertThat(mvc.put().uri("/api/v1/accounts/{id}", id)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"nickname": "Regalia Gold", "type": "CREDIT_CARD", "institution": "HDFC", "last4": null}
+						"""))
+				.hasStatusOk()
+				.bodyJson()
+				.extractingPath("$.nickname")
+				.isEqualTo("Regalia Gold");
+	}
+
+	@Test
+	void updateAccountReturns409WhenTheAccountAlreadyHasTransactions() {
+		UUID id = UUID.fromString("66666666-6666-6666-6666-666666666666");
+		given(service.updateAccount(id, "HDFC Salary", AccountType.CREDIT_CARD, Institution.HDFC, null))
+			.willThrow(new AccountInUseException("\"HDFC Salary\" already has imported transactions"));
+
+		assertThat(mvc.put().uri("/api/v1/accounts/{id}", id)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"nickname": "HDFC Salary", "type": "CREDIT_CARD", "institution": "HDFC", "last4": null}
+						"""))
+				.hasStatus(HttpStatus.CONFLICT)
+				.bodyJson()
+				.extractingPath("$.detail")
+				.isEqualTo("\"HDFC Salary\" already has imported transactions");
+	}
+
+	@Test
+	void updateAccountReturns400ForAnInvalidAccount() {
+		UUID id = UUID.fromString("66666666-6666-6666-6666-666666666666");
+		given(service.updateAccount(id, " ", AccountType.BANK, Institution.HDFC, null))
+			.willThrow(new InvalidAccountException("Nickname must not be blank"));
+
+		assertThat(mvc.put().uri("/api/v1/accounts/{id}", id)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"nickname": " ", "type": "BANK", "institution": "HDFC", "last4": null}
+						"""))
+				.hasStatus(HttpStatus.BAD_REQUEST)
+				.bodyJson()
+				.extractingPath("$.detail")
+				.isEqualTo("Nickname must not be blank");
+	}
+
+	@Test
+	void deleteAccountReturns204() {
+		UUID id = UUID.fromString("77777777-7777-7777-7777-777777777777");
+
+		assertThat(mvc.delete().uri("/api/v1/accounts/{id}", id)).hasStatus(HttpStatus.NO_CONTENT);
+		then(service).should().deleteAccount(id);
+	}
+
+	@Test
+	void deleteAccountReturns404WhenItDoesNotExist() {
+		UUID id = UUID.fromString("77777777-7777-7777-7777-777777777777");
+		willThrow(new AccountNotFoundException(id)).given(service).deleteAccount(id);
+
+		assertThat(mvc.delete().uri("/api/v1/accounts/{id}", id)).hasStatus(HttpStatus.NOT_FOUND);
 	}
 
 	@Test

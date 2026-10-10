@@ -7,6 +7,9 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.format.annotation.DateTimeFormat.ISO;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,6 +29,11 @@ class TransactionController {
 			@RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate from,
 			@RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate to) {
 		return service.list(accountId, from, to);
+	}
+
+	@PutMapping("/{id}")
+	ListedTransaction update(@PathVariable UUID id, @RequestBody UpdateTransactionRequest request) {
+		return service.update(id, request.transactionDate(), request.description(), request.amount());
 	}
 
 }

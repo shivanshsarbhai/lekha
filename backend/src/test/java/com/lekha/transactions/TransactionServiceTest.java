@@ -229,6 +229,101 @@ class TransactionServiceTest {
 				.hasMessage("The date range must be at most 1 year");
 	}
 
+	@Test
+	void updateChangesTheEditableFieldsAndRemembersTheBanksValues() {
+		Transaction rent = statementRow(LocalDate.of(2026, 9, 5), "-35000.00", "125000.00", "REF2", "UPI-RENT");
+		service.recordNew(List.of(rent));
+
+		ListedTransaction updated = service.update(rent.id(), LocalDate.of(2026, 9, 4), "Rent for September",
+				new BigDecimal("-34000.00"));
+
+		Transaction saved = repository.findByAccountId(hdfc).getFirst();
+		assertThat(updated.transaction()).isEqualTo(saved);
+		assertThat(saved.transactionDate()).isEqualTo(LocalDate.of(2026, 9, 4));
+		assertThat(saved.description()).isEqualTo("Rent for September");
+		assertThat(saved.amount()).isEqualTo(new BigDecimal("-34000.00"));
+		assertThat(saved.balanceAfter()).isEqualTo(new BigDecimal("125000.00"));
+		assertThat(saved.metadata()).isEqualTo(Map.of("reference", "REF2", "originalTransactionDate", "2026-09-05",
+				"originalAmount", "-35000.00"));
+	}
+
+	@Test
+	void updateKeepsTheBanksValueThroughRepeatedEdits() {
+		Transaction rent = statementRow(LocalDate.of(2026, 9, 5), "-35000.00", "125000.00", "REF2", "UPI-RENT");
+		service.recordNew(List.of(rent));
+
+		service.update(rent.id(), LocalDate.of(2026, 9, 4), "UPI-RENT", new BigDecimal("-34000.00"));
+		service.update(rent.id(), LocalDate.of(2026, 9, 3), "UPI-RENT", new BigDecimal("-33000.00"));
+
+		assertThat(repository.findByAccountId(hdfc).getFirst().metadata())
+			.containsEntry("originalTransactionDate", "2026-09-05")
+			.containsEntry("originalAmount", "-35000.00");
+	}
+
+	@Test
+	void updateOfOnlyTheDescriptionKeepsTheClassificationAndAddsNoOriginals() {
+		Transaction dinner = transaction(hdfc, LocalDate.of(2026, 9, 3), "-2000.00");
+		service.recordNew(List.of(dinner));
+		Allocation food = allocation(dinner, AllocationKind.EXPENSE, "-2000.00");
+		classify(dinner, food);
+
+		ListedTransaction updated = service.update(dinner.id(), dinner.transactionDate(), "Dinner with friends",
+				new BigDecimal("-2000"));
+
+		assertThat(updated.allocations()).containsExactly(food);
+		assertThat(updated.transaction().metadata()).isEmpty();
+	}
+
+	@Test
+	void updateOfTheAmountClearsTheClassification() {
+		Transaction dinner = transaction(hdfc, LocalDate.of(2026, 9, 3), "-2000.00");
+		service.recordNew(List.of(dinner));
+		classify(dinner, allocation(dinner, AllocationKind.EXPENSE, "-2000.00"));
+
+		ListedTransaction updated = service.update(dinner.id(), dinner.transactionDate(), "UPI-TEST",
+				new BigDecimal("-1800.00"));
+
+		assertThat(updated.allocations()).isEmpty();
+		assertThat(allocations.findByTransactionIds(List.of(dinner.id()))).isEmpty();
+	}
+
+	@Test
+	void recordNewStillRecognisesARowAfterItsDateAndAmountWereEdited() {
+		Transaction rent = statementRow(LocalDate.of(2026, 9, 5), "-35000.00", "125000.00", "REF2", "UPI-RENT");
+		service.recordNew(List.of(rent));
+		service.update(rent.id(), LocalDate.of(2026, 9, 4), "Rent", new BigDecimal("-34000.00"));
+
+		Transaction reimported = statementRow(LocalDate.of(2026, 9, 5), "-35000.00", "125000.00", "REF2", "UPI-RENT");
+
+		assertThat(service.recordNew(List.of(reimported))).isEmpty();
+		assertThat(repository.findByAccountId(hdfc)).hasSize(1);
+	}
+
+	@Test
+	void updateRejectsAnInvalidTransactionAndSavesNothing() {
+		Transaction rent = transaction(hdfc, LocalDate.of(2026, 9, 5), "-35000.00");
+		service.recordNew(List.of(rent));
+
+		assertThatThrownBy(() -> service.update(rent.id(), rent.transactionDate(), "Rent", new BigDecimal("0")))
+			.isInstanceOf(InvalidTransactionException.class)
+			.hasMessage("Amount must not be zero");
+		assertThatThrownBy(() -> service.update(rent.id(), rent.transactionDate(), " ", rent.amount()))
+			.isInstanceOf(InvalidTransactionException.class)
+			.hasMessage("Description must not be blank");
+		assertThatThrownBy(() -> service.update(rent.id(), null, "Rent", rent.amount()))
+			.isInstanceOf(InvalidTransactionException.class)
+			.hasMessage("A transaction needs a date, a description and an amount");
+		assertThat(repository.findByAccountId(hdfc)).containsExactly(rent);
+	}
+
+	@Test
+	void updateThrowsForAnUnknownTransaction() {
+		UUID unknown = UUID.randomUUID();
+
+		assertThatThrownBy(() -> service.update(unknown, LocalDate.of(2026, 9, 5), "Rent", new BigDecimal("-1.00")))
+			.isInstanceOf(TransactionNotFoundException.class);
+	}
+
 	private UUID insertAccount(String nickname) {
 		UUID id = UUID.randomUUID();
 		jdbc.sql("""

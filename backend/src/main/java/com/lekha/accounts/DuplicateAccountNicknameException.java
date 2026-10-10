@@ -1,6 +1,6 @@
 package com.lekha.accounts;
 
-/** Thrown when creating an account whose nickname is already used, ignoring case. */
+/** Thrown when saving an account whose nickname another account already uses, ignoring case. */
 public class DuplicateAccountNicknameException extends RuntimeException {
 
 	DuplicateAccountNicknameException(String nickname, Throwable cause) {

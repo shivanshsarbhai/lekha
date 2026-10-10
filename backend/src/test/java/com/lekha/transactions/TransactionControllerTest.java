@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
@@ -94,6 +95,60 @@ class TransactionControllerTest {
 				.bodyJson()
 				.extractingPath("$.detail")
 				.isEqualTo("from after to");
+	}
+
+	@Test
+	void updateReturnsTheEditedTransaction() {
+		UUID id = UUID.fromString("22222222-2222-2222-2222-222222222222");
+		Transaction edited = new Transaction(id, ACCOUNT_ID, LocalDate.of(2026, 9, 4), null, "Rent",
+				new BigDecimal("-34000.00"), null, null, Map.of("originalAmount", "-35000.00"),
+				Instant.parse("2026-10-01T10:00:00Z"));
+		given(service.update(id, LocalDate.of(2026, 9, 4), "Rent", new BigDecimal("-34000.00")))
+			.willReturn(new ListedTransaction(edited, List.of()));
+
+		var response = assertThat(mvc.put().uri("/api/v1/transactions/{id}", id)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"transactionDate": "2026-09-04", "description": "Rent", "amount": -34000.00}
+						"""))
+				.hasStatusOk()
+				.bodyJson();
+
+		response.extractingPath("$.description").isEqualTo("Rent");
+		response.extractingPath("$.transactionDate").isEqualTo("2026-09-04");
+		response.extractingPath("$.metadata.originalAmount").isEqualTo("-35000.00");
+		response.extractingPath("$.allocations").asArray().isEmpty();
+	}
+
+	@Test
+	void updateReturns400WithTheReasonForAnInvalidEdit() {
+		UUID id = UUID.fromString("22222222-2222-2222-2222-222222222222");
+		given(service.update(id, LocalDate.of(2026, 9, 4), "Rent", new BigDecimal("0")))
+			.willThrow(new InvalidTransactionException("Amount must not be zero"));
+
+		assertThat(mvc.put().uri("/api/v1/transactions/{id}", id)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"transactionDate": "2026-09-04", "description": "Rent", "amount": 0}
+						"""))
+				.hasStatus(HttpStatus.BAD_REQUEST)
+				.bodyJson()
+				.extractingPath("$.detail")
+				.isEqualTo("Amount must not be zero");
+	}
+
+	@Test
+	void updateReturns404ForAnUnknownTransaction() {
+		UUID id = UUID.fromString("22222222-2222-2222-2222-222222222222");
+		given(service.update(id, LocalDate.of(2026, 9, 4), "Rent", new BigDecimal("-1.00")))
+			.willThrow(new TransactionNotFoundException(id));
+
+		assertThat(mvc.put().uri("/api/v1/transactions/{id}", id)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"transactionDate": "2026-09-04", "description": "Rent", "amount": -1.00}
+						"""))
+				.hasStatus(HttpStatus.NOT_FOUND);
 	}
 
 	@Test

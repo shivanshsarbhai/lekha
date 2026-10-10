@@ -51,6 +51,22 @@ class TransactionRepository {
 				.update();
 	}
 
+	/** Saves the fields a user can edit, along with the metadata that remembers the bank's original values. */
+	void update(Transaction transaction) {
+		jdbc.sql("""
+				UPDATE transactions
+				SET transaction_date = :transactionDate, description = :description, amount = :amount,
+				    metadata = CAST(:metadata AS jsonb)
+				WHERE id = :id
+				""")
+				.param("id", transaction.id())
+				.param("transactionDate", transaction.transactionDate())
+				.param("description", transaction.description())
+				.param("amount", transaction.amount())
+				.param("metadata", JSON.writeValueAsString(transaction.metadata()))
+				.update();
+	}
+
 	List<Transaction> findByAccountId(UUID accountId) {
 		return jdbc.sql("""
 				SELECT id, account_id, transaction_date, settlement_date, description, amount,
