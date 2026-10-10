@@ -64,7 +64,9 @@ export function useTransactions({ accountId, from, to }: TransactionFilter) {
 
   const applyClassification = useCallback(
     (transactionId: string, allocations: Allocation[]) =>
-      applyToRows((transaction) => (transaction.id === transactionId ? { ...transaction, allocations } : transaction)),
+      applyToRows((transaction) =>
+        transaction.id === transactionId ? { ...transaction, allocations, suggestion: null } : transaction,
+      ),
     [applyToRows],
   );
 
@@ -73,7 +75,7 @@ export function useTransactions({ accountId, from, to }: TransactionFilter) {
     (saved: Record<string, Allocation[]>) =>
       applyToRows((transaction) => {
         const allocations = saved[transaction.id];
-        return allocations ? { ...transaction, allocations } : transaction;
+        return allocations ? { ...transaction, allocations, suggestion: null } : transaction;
       }),
     [applyToRows],
   );
@@ -83,5 +85,8 @@ export function useTransactions({ accountId, from, to }: TransactionFilter) {
     [applyToRows],
   );
 
-  return { state, applyClassification, applyClassifications, applyEdit };
+  /** Re-fetches without a loading state, e.g. to show suggestions the AI saved in the background. */
+  const refresh = useCallback(() => applyToRows((transaction) => transaction), [applyToRows]);
+
+  return { state, applyClassification, applyClassifications, applyEdit, refresh };
 }

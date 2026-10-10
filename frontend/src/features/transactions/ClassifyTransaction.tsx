@@ -497,11 +497,12 @@ function toLinkedPurchase(candidate: RefundCandidate): LinkedPurchase {
 
 function initialPieces(transaction: Transaction, direction: number): Piece[] {
   if (transaction.allocations.length === 0) {
+    const { suggestion } = transaction;
     return [
       {
         key: 0,
-        kind: direction < 0 ? "EXPENSE" : "INCOME",
-        categoryId: null,
+        kind: suggestion?.kind ?? (direction < 0 ? "EXPENSE" : "INCOME"),
+        categoryId: suggestion?.categoryId ?? null,
         amount: toRupees(Math.round(Math.abs(transaction.amount) * 100)),
         note: "",
         purchase: null,

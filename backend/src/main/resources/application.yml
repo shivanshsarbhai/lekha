@@ -24,3 +24,9 @@ management:
 
 lekha:
   version: @project.version@
+  ai:
+    # Ollama on this computer. Nothing is sent anywhere else.
+    base-url: http://127.0.0.1:11434
+    model: ${LEKHA_AI_MODEL:qwen2.5:7b}
+    # One batch of transactions; the first one after a while also loads the model into memory.
+    timeout: 180s

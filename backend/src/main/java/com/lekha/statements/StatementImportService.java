@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import com.lekha.accounts.Account;
 import com.lekha.accounts.AccountService;
+import com.lekha.transactions.AiClassifier;
 import com.lekha.transactions.Transaction;
 import com.lekha.transactions.TransactionService;
 
@@ -20,10 +21,14 @@ class StatementImportService {
 
 	private final List<StatementParser> parsers;
 
-	StatementImportService(AccountService accounts, TransactionService transactions, List<StatementParser> parsers) {
+	private final AiClassifier ai;
+
+	StatementImportService(AccountService accounts, TransactionService transactions, List<StatementParser> parsers,
+			AiClassifier ai) {
 		this.accounts = accounts;
 		this.transactions = transactions;
 		this.parsers = parsers;
+		this.ai = ai;
 	}
 
 	/**
@@ -47,6 +52,9 @@ class StatementImportService {
 			.map(entry -> toTransaction(accountId, entry))
 			.toList();
 		List<Transaction> imported = transactions.recordNew(parsed);
+		if (!imported.isEmpty()) {
+			ai.suggestInBackground();
+		}
 		return new StatementImport(imported, parsed.size() - imported.size());
 	}
 

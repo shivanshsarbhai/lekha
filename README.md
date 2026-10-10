@@ -92,12 +92,21 @@ POST /api/v1/analytics/query
 ### AI features
 
 #### Auto-classification
-New transactions arrive with a suggested kind and category. You accept with one click or correct them.
-- **Learned rules first.** Each correction teaches Lekha a merchant rule (`UPI-SWIGGY…` → Food › Ordering in), so the
-  same merchant is classified instantly and deterministically next time.
-- **LLM fallback.** Unfamiliar narrations go to a locally hosted language model, which picks from your actual category
-  tree. The model can't invent categories, and suggestions are never saved without your confirmation.
-- **Measured.** A labelled evaluation set of synthetic transactions tracks accuracy whenever prompts or models change.
+A language model running on your own computer suggests a kind and category for every unclassified transaction. You
+accept with one click or choose something else; nothing is saved without you.
+- **Your categories, numbered.** The prompt lists your actual category tree as numbered options, and Ollama's
+  structured output limits the reply to a JSON schema whose option numbers must exist. The model can't invent a
+  category, and the server checks every answer again.
+- **Your habits as examples.** Each transaction is sent with up to 8 of your past choices for transactions whose
+  descriptions look most alike (Postgres `pg_trgm` similarity, ignoring reference numbers). The model knows that
+  "BLINKIT" is groceries; the examples tell it that *you* file Swiggy under Ordering in.
+- **In the background.** Importing a statement starts it, five transactions per request, newest first. The
+  Transactions page shows progress, and suggestions appear as they arrive.
+- **Explained.** Each suggestion carries the model's one-line reason.
+- **Measured on your data.** "Test the AI" hides your choices for your 50 most recently classified transactions,
+  asks the model (showing each one only examples from before its date), and reports how many it got right, with the
+  ones it missed.
+- **Private.** Ollama listens on `127.0.0.1` only. Without it, everything else works as before.
 
 #### Monthly AI summary
 The dashboard opens with a short written summary of the month:
@@ -198,7 +207,10 @@ erDiagram
 | `POST` | `/api/v1/accounts/{id}/statements` | Import a statement PDF (multipart) |
 | `GET` | `/api/v1/transactions?from=&to=&accountId=` | Transactions with allocations and totals |
 | `PUT` | `/api/v1/transactions/{id}/allocations` | Classify or split a transaction (replaces the whole set) |
-| `GET` | `/api/v1/transactions/{id}/suggestion` | AI classification suggestion |
+| `GET` | `/api/v1/ai/status` | Whether the model is ready, what it's doing, and the last test's results |
+| `POST` | `/api/v1/ai/suggestions` | Start suggesting for every unclassified transaction, in the background |
+| `POST` | `/api/v1/ai/evaluation` | Start testing the model against your own choices |
+| `POST` | `/api/v1/ai/stop` | Stop the running job after its current batch |
 | `GET` / `POST` / `PATCH` / `DELETE` | `/api/v1/categories` | Manage the category tree |
 | `POST` | `/api/v1/analytics/query` | Any metrics grouped and filtered by any dimensions (the semantic layer) |
 | `GET` | `/api/v1/insights/anomalies` | Anomaly alerts for a period |
@@ -228,7 +240,9 @@ docker compose up -d          # PostgreSQL on 127.0.0.1:15432
 ### 3. Local model
 
 ```bash
-ollama pull <model>           # any instruction-tuned model, configured in application.yml
+brew install ollama
+ollama serve                  # or open the Ollama app; listens on 127.0.0.1:11434
+ollama pull qwen2.5:7b        # the default; set LEKHA_AI_MODEL in .env to use another
 ```
 
 ### 4. Backend

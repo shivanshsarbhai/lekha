@@ -39,10 +39,14 @@ public class TransactionService {
 
 	private final AccountService accounts;
 
-	TransactionService(TransactionRepository repository, AllocationRepository allocations, AccountService accounts) {
+	private final AiSuggestionRepository aiSuggestions;
+
+	TransactionService(TransactionRepository repository, AllocationRepository allocations, AccountService accounts,
+			AiSuggestionRepository aiSuggestions) {
 		this.repository = repository;
 		this.allocations = allocations;
 		this.accounts = accounts;
+		this.aiSuggestions = aiSuggestions;
 	}
 
 	/**
@@ -83,10 +87,15 @@ public class TransactionService {
 				MAX_REFUND_CANDIDATES);
 	}
 
-	/** Attaches each transaction's allocations, what has been refunded on it, and the purchases it refunds. */
+	/**
+	 * Attaches each transaction's allocations, what has been refunded on it, the purchases it refunds, and the AI's
+	 * suggestion if it is unclassified.
+	 */
 	private List<ListedTransaction> withClassification(List<Transaction> transactions) {
 		List<UUID> ids = transactions.stream().map(Transaction::id).toList();
 		Map<UUID, List<Allocation>> allocationsById = allocations.findByTransactionIds(ids);
+		Map<UUID, AiSuggestion> suggestions = aiSuggestions
+			.findByTransactionIds(ids.stream().filter(id -> !allocationsById.containsKey(id)).toList());
 		Map<UUID, BigDecimal> refunded = allocations.refundedAmounts(ids);
 		Set<UUID> purchaseIds = allocationsById.values()
 			.stream()
@@ -109,7 +118,7 @@ public class TransactionService {
 				.map(ListedTransaction.RefundedPurchase::of)
 				.toList();
 			return new ListedTransaction(transaction, pieces, refunded.getOrDefault(transaction.id(), ZERO_MONEY),
-					refundsOf);
+					refundsOf, suggestions.get(transaction.id()));
 		}).toList();
 	}
 
@@ -178,6 +187,10 @@ public class TransactionService {
 		repository.update(updated);
 		if (amountChanged) {
 			allocations.replace(id, List.of());
+		}
+		if (!description.strip().equals(existing.description())) {
+			// The suggestion was for the old description; the next AI run looks at the new one.
+			aiSuggestions.deleteFor(id);
 		}
 		return withClassification(List.of(updated)).getFirst();
 	}

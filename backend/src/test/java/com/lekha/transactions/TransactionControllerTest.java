@@ -162,7 +162,7 @@ class TransactionControllerTest {
 		BigDecimal zero = new BigDecimal("0.00");
 		given(service.list(null, SEP_1, SEP_30)).willReturn(new TransactionList(
 				List.of(new ListedTransaction(refund, List.of(piece), zero,
-						List.of(new ListedTransaction.RefundedPurchase(purchaseId, SEP_1, "MYNTRA SHOES")))),
+						List.of(new ListedTransaction.RefundedPurchase(purchaseId, SEP_1, "MYNTRA SHOES")), null)),
 				zero, zero, zero, zero, zero, zero, zero, 0));
 
 		var response = assertThat(mvc.get().uri("/api/v1/transactions?from=2026-09-01&to=2026-09-30"))
@@ -173,6 +173,29 @@ class TransactionControllerTest {
 		response.extractingPath("$.transactions[0].refundedAmount").isEqualTo(0.0);
 		response.extractingPath("$.transactions[0].refundedPurchases[0].description").isEqualTo("MYNTRA SHOES");
 		response.extractingPath("$.transactions[0].refundedPurchases[0].transactionDate").isEqualTo("2026-09-01");
+	}
+
+	@Test
+	void listIncludesTheAiSuggestion() {
+		Transaction swiggy = new Transaction(UUID.fromString("22222222-2222-2222-2222-222222222222"), ACCOUNT_ID,
+				LocalDate.of(2026, 9, 3), null, "UPI-SWIGGY", new BigDecimal("-450.00"), null, PaymentMode.UPI, Map.of(),
+				Instant.parse("2026-10-01T10:00:00Z"));
+		UUID orderingIn = UUID.fromString("55555555-5555-5555-5555-555555555555");
+		BigDecimal zero = new BigDecimal("0.00");
+		given(service.list(null, SEP_1, SEP_30)).willReturn(new TransactionList(
+				List.of(new ListedTransaction(swiggy, List.of(), zero, List.of(), new AiSuggestion(swiggy.id(),
+						AllocationKind.EXPENSE, orderingIn, "Swiggy delivers food", "qwen2.5:7b"))),
+				zero, zero, zero, zero, zero, zero, zero, 1));
+
+		var response = assertThat(mvc.get().uri("/api/v1/transactions?from=2026-09-01&to=2026-09-30"))
+				.hasStatusOk()
+				.bodyJson();
+
+		response.extractingPath("$.transactions[0].suggestion.kind").isEqualTo("EXPENSE");
+		response.extractingPath("$.transactions[0].suggestion.categoryId").isEqualTo(orderingIn.toString());
+		response.extractingPath("$.transactions[0].suggestion.reason").isEqualTo("Swiggy delivers food");
+		response.extractingPath("$.transactions[0].suggestion.model").isEqualTo("qwen2.5:7b");
+		response.doesNotHavePath("$.transactions[0].suggestion.transactionId");
 	}
 
 	@Test

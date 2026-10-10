@@ -26,6 +26,10 @@ public class CategoryService {
 		return repository.findById(id);
 	}
 
+	public List<Category> allCategories() {
+		return repository.findAll();
+	}
+
 	/** Every category as a two-level tree: grouped by kind (expenses first), then alphabetical. */
 	List<CategoryNode> tree() {
 		List<Category> all = repository.findAll();

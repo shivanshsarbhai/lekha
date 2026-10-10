@@ -58,7 +58,10 @@ class AllocationRepository {
 				.collect(Collectors.groupingBy(Allocation::transactionId));
 	}
 
-	/** Swaps a transaction's allocations for a new set. Call inside a database transaction so it is all-or-nothing. */
+	/**
+	 * Swaps a transaction's allocations for a new set, and drops the AI's suggestion for it: once you've decided, it
+	 * has served its purpose. Call inside a database transaction so it is all-or-nothing.
+	 */
 	void replace(UUID transactionId, List<Allocation> allocations) {
 		for (Allocation allocation : allocations) {
 			if (!allocation.transactionId().equals(transactionId)) {
@@ -66,6 +69,9 @@ class AllocationRepository {
 			}
 		}
 
+		jdbc.sql("DELETE FROM ai_suggestions WHERE transaction_id = :transactionId")
+				.param("transactionId", transactionId)
+				.update();
 		jdbc.sql("DELETE FROM allocations WHERE transaction_id = :transactionId")
 				.param("transactionId", transactionId)
 				.update();

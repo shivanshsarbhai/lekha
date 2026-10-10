@@ -22,6 +22,7 @@ import com.lekha.accounts.AccountNotFoundException;
 import com.lekha.accounts.AccountService;
 import com.lekha.accounts.AccountType;
 import com.lekha.accounts.Institution;
+import com.lekha.transactions.AiClassifier;
 import com.lekha.transactions.PaymentMode;
 import com.lekha.transactions.Transaction;
 import com.lekha.transactions.TransactionService;
@@ -38,6 +39,8 @@ class StatementImportServiceTest {
 	private final AccountService accounts = mock(AccountService.class);
 
 	private final TransactionService transactions = mock(TransactionService.class);
+
+	private final AiClassifier ai = mock(AiClassifier.class);
 
 	private final Account hdfcBank = Account.create("HDFC Salary", AccountType.BANK, Institution.HDFC, null);
 
@@ -154,7 +157,7 @@ class StatementImportServiceTest {
 	}
 
 	private StatementImportService service(StatementParser... parsers) {
-		return new StatementImportService(accounts, transactions, List.of(parsers));
+		return new StatementImportService(accounts, transactions, List.of(parsers), ai);
 	}
 
 	private static byte[] pdf(String text) throws IOException {

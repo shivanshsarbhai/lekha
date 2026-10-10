@@ -34,7 +34,7 @@ import com.lekha.accounts.AccountService;
 @JdbcTest
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import({ TestcontainersConfiguration.class, TransactionRepository.class, AllocationRepository.class,
-		TransactionService.class })
+		AiSuggestionRepository.class, TransactionService.class })
 class TransactionServiceTest {
 
 	@Autowired

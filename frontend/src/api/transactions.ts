@@ -61,6 +61,17 @@ export interface Transaction {
   refundedAmount: number;
   /** The purchases this transaction refunds, for its pieces' `refundOf` ids. */
   refundedPurchases: RefundedPurchase[];
+  /** The AI's idea, only on unclassified transactions it has looked at. Never saved until you accept it. */
+  suggestion: AiSuggestion | null;
+}
+
+/** Mirrors AiSuggestion.java: one piece of this kind and category for the whole amount. */
+export interface AiSuggestion {
+  kind: AllocationKind;
+  categoryId: string | null;
+  /** The model's one-line reason, e.g. "Swiggy is a food delivery app". */
+  reason: string;
+  model: string;
 }
 
 /** Mirrors RefundCandidate.java: a purchase a refund could be linked to. */

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { Account } from "../../api/accounts";
-import type { Allocation, Transaction } from "../../api/transactions";
+import { stopAi } from "../../api/ai";
+import { classifyTransaction, type AiSuggestion, type Allocation, type Transaction } from "../../api/transactions";
 import { Dialog } from "../../components/Dialog";
 import { AccountSelect, MonthPicker } from "../../components/Filters";
 import { Icon } from "../../components/Icon";
@@ -11,10 +12,12 @@ import { merchantName } from "../../lib/merchant";
 import { currentMonth, formatMonth, isMonth, monthRange, type Month } from "../../lib/month";
 import { useAccounts } from "../accounts/useAccounts";
 import { useCategories, type CategoryLabel } from "../categories/useCategories";
+import { AiPanel } from "./AiPanel";
 import { BulkClassify } from "./BulkClassify";
 import { ClassifyTransaction } from "./ClassifyTransaction";
 import { EditTransaction } from "./EditTransaction";
 import { KIND_LABELS } from "./labels";
+import { useAiStatus } from "./useAiStatus";
 import { useTransactions } from "./useTransactions";
 
 export function TransactionsPage() {
@@ -26,10 +29,37 @@ export function TransactionsPage() {
   const onlyUnclassified = searchParams.get("unclassified") === "1";
 
   const { from, to } = monthRange(month);
-  const { state, applyClassification, applyClassifications, applyEdit } = useTransactions({ accountId, from, to });
+  const { state, applyClassification, applyClassifications, applyEdit, refresh } = useTransactions({
+    accountId,
+    from,
+    to,
+  });
   const [classifying, setClassifying] = useState<Transaction | null>(null);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [bulkClassifying, setBulkClassifying] = useState<Transaction[] | null>(null);
+  const [showingAi, setShowingAi] = useState(false);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
+  const ai = useAiStatus();
+
+  // Each time the background job saves more suggestions, or finishes, re-fetch the list so their chips appear.
+  const aiProgress = ai.status ? `${ai.status.working ?? "idle"}|${ai.status.suggestedThisRun}` : null;
+  const lastAiProgress = useRef(aiProgress);
+  useEffect(() => {
+    if (lastAiProgress.current !== null && aiProgress !== lastAiProgress.current) refresh();
+    lastAiProgress.current = aiProgress;
+  }, [aiProgress, refresh]);
+
+  async function acceptSuggestion(transaction: Transaction, suggestion: AiSuggestion) {
+    setAcceptError(null);
+    try {
+      const allocations = await classifyTransaction(transaction.id, [
+        { kind: suggestion.kind, categoryId: suggestion.categoryId, amount: transaction.amount, note: null, refundOf: null },
+      ]);
+      applyClassification(transaction.id, allocations);
+    } catch (error: unknown) {
+      setAcceptError(error instanceof Error ? error.message : "Unknown error");
+    }
+  }
 
   // A selection belongs to the filter it was made under, so changing month, account or filter starts afresh.
   const filterKey = `${month}|${accountId ?? ""}|${onlyUnclassified ? "1" : ""}`;
@@ -116,8 +146,34 @@ export function TransactionsPage() {
             />
             Only unclassified
           </label>
+          <button type="button" className="button button--secondary" onClick={() => setShowingAi(true)}>
+            <Icon name="spark" /> AI suggestions
+          </button>
         </div>
       </header>
+
+      {ai.status?.working === "SUGGESTING" && (
+        <div className="callout callout--info ai-banner" role="status">
+          <span className="ai__pulse" aria-hidden="true" />
+          <p className="ai-banner__text">
+            <strong>AI is looking at your transactions</strong> · {ai.status.suggestedThisRun} suggested so far,{" "}
+            {ai.status.waiting} left
+          </p>
+          <button type="button" className="button button--ghost button--sm" onClick={() => ai.run(stopAi)}>
+            Stop
+          </button>
+        </div>
+      )}
+
+      {acceptError !== null && (
+        <div className="callout callout--error" role="alert">
+          <Icon name="alert" className="callout__icon" />
+          <div>
+            <p className="callout__title">Couldn't accept the suggestion</p>
+            <p className="callout__text">{acceptError}</p>
+          </div>
+        </div>
+      )}
 
       {state.status === "error" ? (
         <div className="callout callout--error" role="alert">
@@ -204,6 +260,7 @@ export function TransactionsPage() {
                     onToggleSelected={toggleRow}
                     onClassify={setClassifying}
                     onEdit={setEditing}
+                    onAccept={acceptSuggestion}
                   />
                 </>
               )
@@ -238,6 +295,23 @@ export function TransactionsPage() {
           onClassify={() => setBulkClassifying(selectedRows)}
         />
       )}
+
+      <Dialog
+        open={showingAi}
+        onClose={() => setShowingAi(false)}
+        title="AI suggestions"
+        description="A language model on this computer suggests categories. Nothing is sent anywhere else."
+      >
+        {showingAi && (
+          <AiPanel
+            status={ai.status}
+            error={ai.error}
+            onRun={ai.run}
+            onCheckAgain={ai.reload}
+            onClose={() => setShowingAi(false)}
+          />
+        )}
+      </Dialog>
 
       <Dialog
         open={bulkClassifying !== null}
@@ -367,6 +441,7 @@ interface LedgerProps {
   onToggleSelected: (transactionId: string, extendRange: boolean) => void;
   onClassify: (transaction: Transaction) => void;
   onEdit: (transaction: Transaction) => void;
+  onAccept: (transaction: Transaction, suggestion: AiSuggestion) => void;
 }
 
 function Ledger({
@@ -378,6 +453,7 @@ function Ledger({
   onToggleSelected,
   onClassify,
   onEdit,
+  onAccept,
 }: LedgerProps) {
   const groups = groupByDate(transactions);
 
@@ -406,6 +482,7 @@ function Ledger({
                   onToggleSelected={(extendRange) => onToggleSelected(transaction.id, extendRange)}
                   onClassify={() => onClassify(transaction)}
                   onEdit={() => onEdit(transaction)}
+                  onAccept={(suggestion) => onAccept(transaction, suggestion)}
                 />
               ))}
             </ul>
@@ -424,6 +501,7 @@ function LedgerRow({
   onToggleSelected,
   onClassify,
   onEdit,
+  onAccept,
 }: {
   transaction: Transaction;
   account: Account | undefined;
@@ -432,7 +510,9 @@ function LedgerRow({
   onToggleSelected: (extendRange: boolean) => void;
   onClassify: () => void;
   onEdit: () => void;
+  onAccept: (suggestion: AiSuggestion) => void;
 }) {
+  const { suggestion } = transaction;
   const name = merchantName(transaction.description);
   const category = topCategory(transaction.allocations, categoryLabels);
   const style = category !== null ? ({ "--hue": hueOf(category) } as CSSProperties) : undefined;
@@ -485,7 +565,23 @@ function LedgerRow({
         )}
       </div>
       <div className="txn__tag">
-        <ClassificationTag allocations={transaction.allocations} categoryLabels={categoryLabels} onClick={onClassify} />
+        {transaction.allocations.length === 0 && suggestion !== null ? (
+          <>
+            <button
+              type="button"
+              className={`tag tag--suggested tag--${suggestion.kind.toLowerCase()}`}
+              title={`AI: ${suggestion.reason}\nClick to accept.`}
+              onClick={() => onAccept(suggestion)}
+            >
+              <Icon name="spark" size={12} /> {describe(suggestion, categoryLabels)}?
+            </button>
+            <button type="button" className="link-button txn__other" onClick={onClassify}>
+              Other
+            </button>
+          </>
+        ) : (
+          <ClassificationTag allocations={transaction.allocations} categoryLabels={categoryLabels} onClick={onClassify} />
+        )}
       </div>
       <div className="txn__amounts num">
         <span className={`txn__amount${credit ? " txn__amount--in" : ""}`}>
@@ -560,7 +656,10 @@ function ClassificationTag({
   );
 }
 
-function describe(allocation: Allocation, categoryLabels: Map<string, CategoryLabel>): string {
+function describe(
+  allocation: Pick<Allocation, "kind" | "categoryId">,
+  categoryLabels: Map<string, CategoryLabel>,
+): string {
   const category = allocation.categoryId !== null ? categoryLabels.get(allocation.categoryId) : undefined;
   if (category === undefined) return KIND_LABELS[allocation.kind];
   return category.parentName !== null ? `${category.parentName} › ${category.name}` : category.name;
