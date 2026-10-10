@@ -2423,6 +2423,148 @@ mark {
   font-weight: 700;
 }
 
+.txn__select {
+  position: relative;
+  cursor: pointer;
+}
+
+.txn__checkbox {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.txn__select:has(.txn__checkbox:focus-visible) {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.txn__tick {
+  display: none;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--brand-contrast);
+}
+
+.txn__tick svg {
+  opacity: 0;
+}
+
+.txn:hover .txn__initial,
+.ledger--selecting .txn__initial {
+  display: none;
+}
+
+.txn:hover .txn__tick,
+.ledger--selecting .txn__tick {
+  display: grid;
+}
+
+.txn__select--on .txn__tick {
+  border-color: var(--brand);
+  background: var(--brand);
+}
+
+.txn__select--on .txn__tick svg {
+  opacity: 1;
+}
+
+.txn--selected,
+.txn--selected:hover {
+  background: var(--brand-soft);
+}
+
+.ledger-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 0.6rem;
+  padding: 0 0.25rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.ledger-toolbar__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.ledger-toolbar__all input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--brand);
+}
+
+.ledger-toolbar__hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.selection-bar {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.7rem 0.6rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(-50%);
+}
+
+.page:has(.selection-bar) {
+  padding-bottom: 5.5rem;
+}
+
+.selection-bar__text {
+  margin: 0;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.selection-bar__text strong {
+  color: var(--text);
+}
+
+.bulk__fields {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.bulk__note {
+  grid-column: 1 / -1;
+}
+
+.bulk__warning {
+  color: var(--lent);
+}
+
+@media (max-width: 640px) {
+  .bulk__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .ledger-toolbar__hint {
+    display: none;
+  }
+}
+
 .txn--plain .txn__avatar {
   background: var(--bg-subtle);
   box-shadow: inset 0 0 0 1px var(--border);

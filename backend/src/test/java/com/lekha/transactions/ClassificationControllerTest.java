@@ -6,7 +6,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -17,7 +19,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
-@WebMvcTest(ClassificationController.class)
+/** TransactionController is loaded too, to check its PUT /{id} doesn't catch the bulk PUT /allocations. */
+@WebMvcTest({ ClassificationController.class, TransactionController.class })
 class ClassificationControllerTest {
 
 	private static final UUID TRANSACTION_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
@@ -29,6 +32,9 @@ class ClassificationControllerTest {
 
 	@MockitoBean
 	ClassificationService service;
+
+	@MockitoBean
+	TransactionService transactions;
 
 	@Test
 	void putPassesTheRowsThroughAndReturnsTheSavedSplit() {
@@ -80,6 +86,44 @@ class ClassificationControllerTest {
 		assertThat(put("""
 				[{ "kind": "SPLURGE", "amount": -500.00 }]
 				""")).hasStatus(HttpStatus.BAD_REQUEST);
+	}
+
+	@Test
+	void bulkPutPassesTheRequestThroughAndReturnsPiecesById() {
+		UUID other = UUID.fromString("55555555-5555-5555-5555-555555555555");
+		BulkClassificationRequest request = new BulkClassificationRequest(List.of(TRANSACTION_ID, other),
+				AllocationKind.EXPENSE, DINING_OUT, null);
+		Allocation piece = new Allocation(UUID.fromString("44444444-4444-4444-4444-444444444444"), TRANSACTION_ID,
+				AllocationKind.EXPENSE, DINING_OUT, new BigDecimal("-450.00"), null, null);
+		Allocation otherPiece = new Allocation(UUID.fromString("66666666-6666-6666-6666-666666666666"), other,
+				AllocationKind.EXPENSE, DINING_OUT, new BigDecimal("-320.00"), null, null);
+		given(service.classifyAll(request))
+			.willReturn(new LinkedHashMap<>(Map.of(TRANSACTION_ID, List.of(piece), other, List.of(otherPiece))));
+
+		var response = assertThat(bulkPut("""
+				{ "transactionIds": ["22222222-2222-2222-2222-222222222222", "55555555-5555-5555-5555-555555555555"],
+				  "kind": "EXPENSE", "categoryId": "33333333-3333-3333-3333-333333333333" }
+				""")).hasStatusOk().bodyJson();
+
+		response.extractingPath("$['22222222-2222-2222-2222-222222222222'][0].amount").isEqualTo(-450.0);
+		response.extractingPath("$['55555555-5555-5555-5555-555555555555'][0].categoryId")
+			.isEqualTo("33333333-3333-3333-3333-333333333333");
+	}
+
+	@Test
+	void bulkConflictIs409WithTheReason() {
+		given(service.classifyAll(any())).willThrow(new RefundConflictException("\"SHOES\" on 2026-09-01: refunded"));
+
+		assertThat(bulkPut("""
+				{ "transactionIds": ["22222222-2222-2222-2222-222222222222"], "kind": "TRANSFER" }
+				""")).hasStatus(HttpStatus.CONFLICT)
+			.bodyJson()
+			.extractingPath("$.detail")
+			.isEqualTo("\"SHOES\" on 2026-09-01: refunded");
+	}
+
+	private MockMvcTester.MockMvcRequestBuilder bulkPut(String body) {
+		return mvc.put().uri("/api/v1/transactions/allocations").contentType(MediaType.APPLICATION_JSON).content(body);
 	}
 
 	private MockMvcTester.MockMvcRequestBuilder put(String body) {

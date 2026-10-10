@@ -36,22 +36,17 @@ export function useTransactions({ accountId, from, to }: TransactionFilter) {
   }, [accountId, from, to]);
 
   /**
-   * After a save: shows the change on that row at once, then re-fetches the list without a loading state, because
+   * After a save: shows the change on the affected rows at once, then re-fetches the list without a loading state, because
    * only the server computes the totals. An edited date may also move the row out of this month.
    */
-  const applyToRow = useCallback(
-    (transactionId: string, change: (transaction: Transaction) => Transaction) => {
+  const applyToRows = useCallback(
+    (change: (transaction: Transaction) => Transaction) => {
       setState((current) =>
         current.status !== "success"
           ? current
           : {
               status: "success",
-              data: {
-                ...current.data,
-                transactions: current.data.transactions.map((transaction) =>
-                  transaction.id === transactionId ? change(transaction) : transaction,
-                ),
-              },
+              data: { ...current.data, transactions: current.data.transactions.map(change) },
             },
       );
 
@@ -69,11 +64,24 @@ export function useTransactions({ accountId, from, to }: TransactionFilter) {
 
   const applyClassification = useCallback(
     (transactionId: string, allocations: Allocation[]) =>
-      applyToRow(transactionId, (transaction) => ({ ...transaction, allocations })),
-    [applyToRow],
+      applyToRows((transaction) => (transaction.id === transactionId ? { ...transaction, allocations } : transaction)),
+    [applyToRows],
   );
 
-  const applyEdit = useCallback((edited: Transaction) => applyToRow(edited.id, () => edited), [applyToRow]);
+  /** After a bulk save: `saved` has the new pieces of every transaction that changed, keyed by id. */
+  const applyClassifications = useCallback(
+    (saved: Record<string, Allocation[]>) =>
+      applyToRows((transaction) => {
+        const allocations = saved[transaction.id];
+        return allocations ? { ...transaction, allocations } : transaction;
+      }),
+    [applyToRows],
+  );
 
-  return { state, applyClassification, applyEdit };
+  const applyEdit = useCallback(
+    (edited: Transaction) => applyToRows((transaction) => (transaction.id === edited.id ? edited : transaction)),
+    [applyToRows],
+  );
+
+  return { state, applyClassification, applyClassifications, applyEdit };
 }

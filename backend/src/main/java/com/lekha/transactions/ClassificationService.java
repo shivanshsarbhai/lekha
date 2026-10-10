@@ -1,6 +1,7 @@
 package com.lekha.transactions;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +21,8 @@ import com.lekha.categories.CategoryService;
 class ClassificationService {
 
 	private static final BigDecimal ZERO_MONEY = new BigDecimal("0.00");
+
+	private static final int MAX_BULK = 500;
 
 	private final TransactionRepository transactions;
 
@@ -53,6 +56,70 @@ class ClassificationService {
 
 		allocations.replace(transactionId, pieces);
 		return pieces.stream().sorted(Allocation.DISPLAY_ORDER).toList();
+	}
+
+	/**
+	 * Classifies each transaction as one piece of the same kind and category covering its whole amount, replacing
+	 * what it had. It runs as one database transaction, so one transaction failing a rule saves none of them; the
+	 * error names it.
+	 */
+	@Transactional
+	Map<UUID, List<Allocation>> classifyAll(BulkClassificationRequest request) {
+		List<UUID> ids = checkedIds(request.transactionIds());
+		AllocationKind kind = request.kind();
+		if (kind == null) {
+			throw new InvalidAllocationException("Choose a kind to classify the transactions as");
+		}
+
+		// Locking in one fixed order means two overlapping bulk saves wait for each other instead of deadlocking.
+		Map<UUID, Transaction> locked = new LinkedHashMap<>();
+		for (UUID id : ids.stream().sorted().toList()) {
+			locked.put(id, transactions.findByIdForUpdate(id).orElseThrow(() -> new TransactionNotFoundException(id)));
+		}
+
+		Transaction first = locked.get(ids.getFirst());
+		checkCategory(toAllocation(first.id(), wholeAmount(first, kind, request)));
+
+		Map<UUID, List<Allocation>> saved = new LinkedHashMap<>();
+		for (UUID id : ids) {
+			Transaction transaction = locked.get(id);
+			try {
+				saved.put(id, classify(id, List.of(wholeAmount(transaction, kind, request))));
+			}
+			catch (InvalidAllocationException ex) {
+				throw new InvalidAllocationException(quoted(transaction) + ": " + ex.getMessage());
+			}
+			catch (RefundConflictException ex) {
+				throw new RefundConflictException(quoted(transaction) + ": " + ex.getMessage());
+			}
+		}
+		return saved;
+	}
+
+	private static List<UUID> checkedIds(@Nullable List<@Nullable UUID> ids) {
+		if (ids == null || ids.isEmpty()) {
+			throw new InvalidAllocationException("Choose at least one transaction to classify");
+		}
+		if (ids.size() > MAX_BULK) {
+			throw new InvalidAllocationException(
+					"At most " + MAX_BULK + " transactions can be classified at once, not " + ids.size());
+		}
+		List<UUID> checked = new ArrayList<>();
+		for (UUID id : ids) {
+			if (id == null) {
+				throw new InvalidAllocationException("Transaction ids can't be empty");
+			}
+			checked.add(id);
+		}
+		if (Set.copyOf(checked).size() != checked.size()) {
+			throw new InvalidAllocationException("Each transaction can only be listed once");
+		}
+		return checked;
+	}
+
+	private static AllocationRequest wholeAmount(Transaction transaction, AllocationKind kind,
+			BulkClassificationRequest request) {
+		return new AllocationRequest(kind, request.categoryId(), transaction.amount(), request.note(), null);
 	}
 
 	private static Allocation toAllocation(UUID transactionId, @Nullable AllocationRequest request) {

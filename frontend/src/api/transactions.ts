@@ -137,6 +137,23 @@ export function listRefundCandidates(
   return apiGet<RefundCandidate[]>(`/transactions/${transactionId}/refund-candidates${query}`, signal);
 }
 
+/** Body of PUT /api/v1/transactions/allocations. Mirrors BulkClassificationRequest.java. */
+export interface BulkClassification {
+  /** At most 500, each once. */
+  transactionIds: string[];
+  kind: AllocationKind;
+  categoryId: string | null;
+  note: string | null;
+}
+
+/**
+ * Gives every transaction one piece of this kind and category for its whole amount, replacing what it had. All of
+ * them are saved or none: an error names the transaction that broke a rule. Resolves to each one's new pieces by id.
+ */
+export function classifyTransactions(body: BulkClassification): Promise<Record<string, Allocation[]>> {
+  return apiPut<BulkClassification, Record<string, Allocation[]>>("/transactions/allocations", body);
+}
+
 export function classifyTransaction(transactionId: string, pieces: AllocationInput[]): Promise<Allocation[]> {
   return apiPut<AllocationInput[], Allocation[]>(`/transactions/${transactionId}/allocations`, pieces);
 }

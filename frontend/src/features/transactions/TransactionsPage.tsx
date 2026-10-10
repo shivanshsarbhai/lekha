@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { Account } from "../../api/accounts";
 import type { Allocation, Transaction } from "../../api/transactions";
@@ -11,6 +11,7 @@ import { merchantName } from "../../lib/merchant";
 import { currentMonth, formatMonth, isMonth, monthRange, type Month } from "../../lib/month";
 import { useAccounts } from "../accounts/useAccounts";
 import { useCategories, type CategoryLabel } from "../categories/useCategories";
+import { BulkClassify } from "./BulkClassify";
 import { ClassifyTransaction } from "./ClassifyTransaction";
 import { EditTransaction } from "./EditTransaction";
 import { KIND_LABELS } from "./labels";
@@ -25,9 +26,16 @@ export function TransactionsPage() {
   const onlyUnclassified = searchParams.get("unclassified") === "1";
 
   const { from, to } = monthRange(month);
-  const { state, applyClassification, applyEdit } = useTransactions({ accountId, from, to });
+  const { state, applyClassification, applyClassifications, applyEdit } = useTransactions({ accountId, from, to });
   const [classifying, setClassifying] = useState<Transaction | null>(null);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [bulkClassifying, setBulkClassifying] = useState<Transaction[] | null>(null);
+
+  // A selection belongs to the filter it was made under, so changing month, account or filter starts afresh.
+  const filterKey = `${month}|${accountId ?? ""}|${onlyUnclassified ? "1" : ""}`;
+  const [selection, setSelection] = useState<{ filterKey: string; ids: Set<string> }>({ filterKey, ids: new Set() });
+  const selectedIds = selection.filterKey === filterKey ? selection.ids : NO_IDS;
+  const selectionAnchor = useRef<string | null>(null);
   const { state: accountsState } = useAccounts();
   const accounts = accountsState.status === "success" ? accountsState.accounts : [];
   const accountsById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
@@ -57,6 +65,35 @@ export function TransactionsPage() {
       ? data.transactions.filter((transaction) => transaction.allocations.length === 0)
       : data.transactions
     : [];
+  // Only rows on screen count, so a row that moved out of this month after a reload is never classified unseen.
+  const selectedRows = visible.filter((transaction) => selectedIds.has(transaction.id));
+
+  function setSelectedIds(ids: Set<string>) {
+    setSelection({ filterKey, ids });
+  }
+
+  /** Shift-click sets every row between the last one clicked and this one to this row's new state. */
+  function toggleRow(id: string, extendRange: boolean) {
+    const next = new Set(selectedIds);
+    const selecting = !next.has(id);
+    const anchorIndex = selectionAnchor.current === null ? -1 : visible.findIndex((t) => t.id === selectionAnchor.current);
+    const index = visible.findIndex((t) => t.id === id);
+    const range =
+      extendRange && anchorIndex >= 0
+        ? visible.slice(Math.min(anchorIndex, index), Math.max(anchorIndex, index) + 1)
+        : visible.slice(index, index + 1);
+    for (const transaction of range) {
+      if (selecting) next.add(transaction.id);
+      else next.delete(transaction.id);
+    }
+    selectionAnchor.current = id;
+    setSelectedIds(next);
+  }
+
+  function toggleAll() {
+    selectionAnchor.current = null;
+    setSelectedIds(selectedRows.length === visible.length ? new Set() : new Set(visible.map((t) => t.id)));
+  }
 
   return (
     <div className="page">
@@ -156,14 +193,19 @@ export function TransactionsPage() {
                   </button>
                 </div>
               ) : (
-                <Ledger
-                  transactions={visible}
-                  accountsById={accountsById}
-                  categoryLabels={categoryLabels}
-                  showAccount={accountId === null}
-                  onClassify={setClassifying}
-                  onEdit={setEditing}
-                />
+                <>
+                  <SelectAll selected={selectedRows.length} total={visible.length} onToggle={toggleAll} />
+                  <Ledger
+                    transactions={visible}
+                    accountsById={accountsById}
+                    categoryLabels={categoryLabels}
+                    showAccount={accountId === null}
+                    selectedIds={selectedIds}
+                    onToggleSelected={toggleRow}
+                    onClassify={setClassifying}
+                    onEdit={setEditing}
+                  />
+                </>
               )
             ))}
         </>
@@ -185,6 +227,34 @@ export function TransactionsPage() {
               setClassifying(null);
             }}
             onCancel={() => setClassifying(null)}
+          />
+        )}
+      </Dialog>
+
+      {selectedRows.length > 0 && (
+        <SelectionBar
+          rows={selectedRows}
+          onClear={() => setSelectedIds(new Set())}
+          onClassify={() => setBulkClassifying(selectedRows)}
+        />
+      )}
+
+      <Dialog
+        open={bulkClassifying !== null}
+        onClose={() => setBulkClassifying(null)}
+        title="Classify selected transactions"
+        description="Give them all the same kind and category."
+      >
+        {bulkClassifying && (
+          <BulkClassify
+            transactions={bulkClassifying}
+            categories={categoryTree}
+            onSaved={(saved) => {
+              applyClassifications(saved);
+              setBulkClassifying(null);
+              setSelectedIds(new Set());
+            }}
+            onCancel={() => setBulkClassifying(null)}
           />
         )}
       </Dialog>
@@ -240,20 +310,79 @@ function Total({ label, icon, tone, value, signed = false }: TotalProps) {
   );
 }
 
+const NO_IDS: ReadonlySet<string> = new Set();
+
+function SelectAll({ selected, total, onToggle }: { selected: number; total: number; onToggle: () => void }) {
+  const checkbox = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (checkbox.current) checkbox.current.indeterminate = selected > 0 && selected < total;
+  }, [selected, total]);
+
+  return (
+    <div className="ledger-toolbar">
+      <label className="ledger-toolbar__all">
+        <input ref={checkbox} type="checkbox" checked={selected > 0 && selected === total} onChange={onToggle} />
+        Select all {total} shown
+      </label>
+      <span className="ledger-toolbar__hint">Shift-click a row to select a range</span>
+    </div>
+  );
+}
+
+function SelectionBar({
+  rows,
+  onClear,
+  onClassify,
+}: {
+  rows: Transaction[];
+  onClear: () => void;
+  onClassify: () => void;
+}) {
+  const out = sumMoney(rows.filter((row) => row.amount < 0).map((row) => -row.amount));
+  const moneyIn = sumMoney(rows.filter((row) => row.amount > 0).map((row) => row.amount));
+
+  return (
+    <div className="selection-bar" role="region" aria-label="Selected transactions">
+      <p className="selection-bar__text">
+        <strong>{rows.length} selected</strong>
+        {out > 0 && <> · {formatMoney(out)} out</>}
+        {moneyIn > 0 && <> · {formatMoney(moneyIn)} in</>}
+      </p>
+      <button type="button" className="button button--ghost button--sm" onClick={onClear}>
+        Clear
+      </button>
+      <button type="button" className="button button--sm" onClick={onClassify}>
+        Classify
+      </button>
+    </div>
+  );
+}
+
 interface LedgerProps {
   transactions: Transaction[];
   accountsById: Map<string, Account>;
   categoryLabels: Map<string, CategoryLabel>;
   showAccount: boolean;
+  selectedIds: ReadonlySet<string>;
+  onToggleSelected: (transactionId: string, extendRange: boolean) => void;
   onClassify: (transaction: Transaction) => void;
   onEdit: (transaction: Transaction) => void;
 }
 
-function Ledger({ transactions, accountsById, categoryLabels, showAccount, onClassify, onEdit }: LedgerProps) {
+function Ledger({
+  transactions,
+  accountsById,
+  categoryLabels,
+  showAccount,
+  selectedIds,
+  onToggleSelected,
+  onClassify,
+  onEdit,
+}: LedgerProps) {
   const groups = groupByDate(transactions);
 
   return (
-    <div className="ledger">
+    <div className={`ledger${selectedIds.size > 0 ? " ledger--selecting" : ""}`}>
       {groups.map(({ date, rows }) => {
         const out = sumMoney(rows.filter((row) => row.amount < 0).map((row) => -row.amount));
         const moneyIn = sumMoney(rows.filter((row) => row.amount > 0).map((row) => row.amount));
@@ -273,6 +402,8 @@ function Ledger({ transactions, accountsById, categoryLabels, showAccount, onCla
                   transaction={transaction}
                   account={showAccount ? accountsById.get(transaction.accountId) : undefined}
                   categoryLabels={categoryLabels}
+                  selected={selectedIds.has(transaction.id)}
+                  onToggleSelected={(extendRange) => onToggleSelected(transaction.id, extendRange)}
                   onClassify={() => onClassify(transaction)}
                   onEdit={() => onEdit(transaction)}
                 />
@@ -289,12 +420,16 @@ function LedgerRow({
   transaction,
   account,
   categoryLabels,
+  selected,
+  onToggleSelected,
   onClassify,
   onEdit,
 }: {
   transaction: Transaction;
   account: Account | undefined;
   categoryLabels: Map<string, CategoryLabel>;
+  selected: boolean;
+  onToggleSelected: (extendRange: boolean) => void;
   onClassify: () => void;
   onEdit: () => void;
 }) {
@@ -304,10 +439,33 @@ function LedgerRow({
   const credit = transaction.amount > 0;
 
   return (
-    <li className={`txn${category === null ? " txn--plain" : ""}`} style={style}>
-      <span className="txn__avatar" aria-hidden="true">
-        {name.charAt(0)}
-      </span>
+    <li
+      className={`txn${category === null ? " txn--plain" : ""}${selected ? " txn--selected" : ""}`}
+      style={style}
+    >
+      {/* The avatar doubles as the row's checkbox: it shows a tick on hover, or once anything is selected. */}
+      <label className={`txn__avatar txn__select${selected ? " txn__select--on" : ""}`}>
+        <input
+          type="checkbox"
+          className="txn__checkbox"
+          checked={selected}
+          onChange={() => {
+            // Handled in onClick, which knows whether Shift was held.
+          }}
+          onMouseDown={(event) => {
+            // Otherwise Shift-click also highlights all the text between the two rows.
+            if (event.shiftKey) event.preventDefault();
+          }}
+          onClick={(event) => onToggleSelected(event.shiftKey)}
+          aria-label={`Select ${name}`}
+        />
+        <span className="txn__initial" aria-hidden="true">
+          {name.charAt(0)}
+        </span>
+        <span className="txn__tick" aria-hidden="true">
+          <Icon name="check" size={13} />
+        </span>
+      </label>
       <div className="txn__main">
         <p className="txn__name" title={transaction.description}>
           {name}

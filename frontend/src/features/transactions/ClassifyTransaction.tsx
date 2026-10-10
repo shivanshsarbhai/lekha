@@ -17,11 +17,11 @@ import { KIND_LABELS } from "./labels";
 /** REFUND exists only in this editor: it is saved as an EXPENSE piece linked to the purchase it refunds. */
 type PieceKind = AllocationKind | "REFUND";
 
-const KINDS: AllocationKind[] = ["EXPENSE", "INCOME", "TRANSFER", "INVESTMENT", "LENT"];
+export const KINDS: AllocationKind[] = ["EXPENSE", "INCOME", "TRANSFER", "INVESTMENT", "LENT"];
 
 const PIECE_LABELS: Record<PieceKind, string> = { ...KIND_LABELS, REFUND: "Refund" };
 
-const HAS_CATEGORIES: Record<PieceKind, boolean> = {
+export const HAS_CATEGORIES: Record<PieceKind, boolean> = {
   EXPENSE: true,
   INCOME: true,
   TRANSFER: true,
@@ -30,7 +30,7 @@ const HAS_CATEGORIES: Record<PieceKind, boolean> = {
   REFUND: true,
 };
 
-const KIND_HINTS: Record<PieceKind, string> = {
+export const KIND_HINTS: Record<PieceKind, string> = {
   EXPENSE: "Money you actually spent. A refund you can't match to a purchase goes here, in its category.",
   INCOME: "Salary, interest, dividends and other earnings.",
   TRANSFER: "Moving money between your own accounts. Counts nowhere.",
@@ -319,7 +319,7 @@ export function ClassifyTransaction({ transaction, categories, onSaved, onCancel
 }
 
 /** Categories of one kind. `allowed`, when known, narrows it to a refunded purchase's categories. */
-function CategorySelect({
+export function CategorySelect({
   categories,
   kind,
   allowed,
