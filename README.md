@@ -269,7 +269,10 @@ lekha/
 
 | Bank | Account type | Status |
 |---|---|---|
-| HDFC Bank | Savings | Supported |
+| HDFC Bank | Savings | Supported (single-page statements) |
+| State Bank of India | Savings | Supported, including multi-page statements |
+| HDFC Bank | Credit cards | Supported (tested with Regalia Gold and Swiggy; domestic transactions) |
+| SBI Card | Credit card | Planned |
 
 Parsers are pluggable (`StatementParser`), and each new bank is a self-contained parser with its own reconciliation.
 

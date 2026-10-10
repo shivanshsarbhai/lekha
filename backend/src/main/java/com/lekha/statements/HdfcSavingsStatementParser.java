@@ -1,10 +1,13 @@
 package com.lekha.statements;
 
+import static com.lekha.statements.StatementChecks.check;
+import static com.lekha.statements.StatementChecks.parseAmount;
+import static com.lekha.statements.StatementChecks.sum;
+
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -168,27 +171,6 @@ class HdfcSavingsStatementParser implements StatementParser {
 		check("Closing Bal", summary.closingBalance(), finalBalance);
 	}
 
-	private static void check(String field, int expected, int actual) {
-		if (expected != actual) {
-			throw mismatch(field, String.valueOf(expected), String.valueOf(actual));
-		}
-	}
-
-	private static void check(String field, BigDecimal expected, BigDecimal actual) {
-		if (expected.compareTo(actual) != 0) {
-			throw mismatch(field, expected.toPlainString(), actual.toPlainString());
-		}
-	}
-
-	private static StatementFormatException mismatch(String field, String expected, String actual) {
-		return new StatementFormatException("Statement summary mismatch for " + field + ": the summary says "
-				+ expected + " but the transactions give " + actual);
-	}
-
-	private static BigDecimal sum(List<StatementEntry> entries) {
-		return entries.stream().map(StatementEntry::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
-	}
-
 	private static PaymentMode paymentModeOf(String narration) {
 		if (narration.startsWith("UPI-")) {
 			return PaymentMode.UPI;
@@ -221,16 +203,7 @@ class HdfcSavingsStatementParser implements StatementParser {
 	}
 
 	private static LocalDate parseDate(String text) {
-		try {
-			return LocalDate.parse(text, DATE);
-		}
-		catch (DateTimeParseException ex) {
-			throw new StatementFormatException("Invalid date: " + text);
-		}
-	}
-
-	private static BigDecimal parseAmount(String text) {
-		return new BigDecimal(text.replace(",", ""));
+		return StatementChecks.parseDate(text, DATE);
 	}
 
 	/** One printed row. The amount is unsigned until the balance shows which way the money moved. */

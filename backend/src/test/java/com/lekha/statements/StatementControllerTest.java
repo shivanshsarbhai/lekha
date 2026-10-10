@@ -81,14 +81,14 @@ class StatementControllerTest {
 
 	@Test
 	void uploadReturns422WhenTheAccountTypeIsNotSupported() {
-		Account card = Account.create("HDFC Card", AccountType.CREDIT_CARD, Institution.HDFC, null);
-		given(service.importStatement(eq(ACCOUNT_ID), any())).willThrow(new UnsupportedAccountException(card));
+		Account federal = Account.create("Federal Savings", AccountType.BANK, Institution.FEDERAL_BANK, null);
+		given(service.importStatement(eq(ACCOUNT_ID), any())).willThrow(new UnsupportedAccountException(federal));
 
 		assertThat(upload(ACCOUNT_ID))
 				.hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
 				.bodyJson()
 				.extractingPath("$.detail")
-				.isEqualTo("Statements for HDFC CREDIT_CARD accounts can't be imported yet");
+				.isEqualTo("Statements for FEDERAL_BANK BANK accounts can't be imported yet");
 	}
 
 	@Test
