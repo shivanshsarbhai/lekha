@@ -118,13 +118,41 @@ class HdfcSavingsStatementParserTest {
 	}
 
 	@Test
-	void rejectsAStatementThatContinuesOnAnotherPage() {
+	void readsAStatementThatContinuesOnAnotherPage() {
 		List<String> rows = new ArrayList<>(ROWS);
-		rows.add(2, "Date Narration Chq./Ref.No. Value Dt Withdrawal Amt. Deposit Amt. Closing Balance");
+		rows.addAll(2, pageBreak(1));
+
+		assertThat(parser.parseText(statement(rows, SUMMARY_VALUES)))
+				.isEqualTo(parser.parseText(statement(ROWS, SUMMARY_VALUES)));
+	}
+
+	@Test
+	void aNarrationCanCarryOnAfterAPageBreak() {
+		List<String> rows = new ArrayList<>(ROWS);
+		rows.addAll(rows.indexOf("OKBANK0000001-222233334444-DINNER"), pageBreak(2));
+
+		assertThat(parser.parseText(statement(rows, SUMMARY_VALUES)).getLast().description())
+				.isEqualTo("UPI-JOHN DOE JOHN.DOE@OKBANK- OKBANK0000001-222233334444-DINNER");
+	}
+
+	@Test
+	void rejectsAPageBreakThatNeverEnds() {
+		List<String> rows = new ArrayList<>(ROWS);
+		rows.addAll(2, pageBreak(1).subList(0, 4));
 
 		assertThatThrownBy(() -> parser.parseText(statement(rows, SUMMARY_VALUES)))
 				.isInstanceOf(StatementFormatException.class)
-				.hasMessage("Multi-page statements are not supported yet");
+				.hasMessage("Could not find where the next page's transactions start after \"Page No .: 1\"");
+	}
+
+	/** What the text has between two pages: the page number, account details and notices, in a real statement's order. */
+	private static List<String> pageBreak(int page) {
+		return List.of("Page No .: " + page, "MR TEST USER", "1 TEST STREET", "JOINT HOLDERS :",
+				"Nomination : Registered", "Statement of accountFrom : 01/09/2026 To : 30/09/2026",
+				"Account Branch : SOMEWHERE", "A/C Open Date : 01/01/2020", "Account Type : SAVINGS - RESIDENTS(000)",
+				"HDFC BANK LIMITED", "*Closing balance includes funds earmarked for hold and uncleared funds",
+				"State account branch GSTN:00TEST0000T0Z0",
+				"Registered Office Address: HDFC Bank House,Senapati Bapat Marg,Lower Parel,Mumbai 400013");
 	}
 
 	@Test

@@ -269,7 +269,7 @@ lekha/
 
 | Bank | Account type | Status |
 |---|---|---|
-| HDFC Bank | Savings | Supported (single-page statements) |
+| HDFC Bank | Savings | Supported, including multi-page statements |
 | State Bank of India | Savings | Supported, including multi-page statements |
 | HDFC Bank | Credit cards | Supported (tested with Regalia Gold and Swiggy; domestic transactions) |
 | SBI Card | Credit card | Supported (domestic transactions) |

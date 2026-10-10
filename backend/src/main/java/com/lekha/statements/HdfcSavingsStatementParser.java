@@ -14,6 +14,7 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 import com.lekha.accounts.AccountType;
@@ -33,6 +34,14 @@ class HdfcSavingsStatementParser implements StatementParser {
 	private static final String TABLE_HEADER = "Date Narration";
 
 	private static final String SUMMARY_HEADER = "STATEMENT SUMMARY";
+
+	/**
+	 * Between pages the text has the page number, the account details and the bank's notices, from "Page No .:" to the
+	 * registered office address. A transaction's narration can carry on after it.
+	 */
+	private static final String PAGE_BREAK_START = "Page No .:";
+
+	private static final String PAGE_BREAK_END = "Registered Office Address";
 
 	private static final Pattern ROW_START = Pattern.compile("^(\\d{2}/\\d{2}/\\d{2})\\s+(.*)$");
 
@@ -77,13 +86,21 @@ class HdfcSavingsStatementParser implements StatementParser {
 		int end = indexOfLineStartingWith(lines, SUMMARY_HEADER);
 
 		List<List<String>> blocks = new ArrayList<>();
+		@Nullable String pageBreak = null;
 		for (String raw : lines.subList(start + 1, end)) {
 			String line = raw.strip();
-			if (line.isEmpty()) {
+			if (pageBreak != null) {
+				if (line.startsWith(PAGE_BREAK_END)) {
+					pageBreak = null;
+				}
 				continue;
 			}
-			if (line.startsWith(TABLE_HEADER)) {
-				throw new StatementFormatException("Multi-page statements are not supported yet");
+			if (line.startsWith(PAGE_BREAK_START)) {
+				pageBreak = line;
+				continue;
+			}
+			if (line.isEmpty() || line.startsWith(TABLE_HEADER)) {
+				continue;
 			}
 			if (ROW_START.matcher(line).matches()) {
 				blocks.add(new ArrayList<>());
@@ -92,6 +109,10 @@ class HdfcSavingsStatementParser implements StatementParser {
 				throw new StatementFormatException("Expected a transaction date but found: " + line);
 			}
 			blocks.getLast().add(line);
+		}
+		if (pageBreak != null) {
+			throw new StatementFormatException(
+					"Could not find where the next page's transactions start after \"" + pageBreak + "\"");
 		}
 		return blocks.stream().map(HdfcSavingsStatementParser::toRow).toList();
 	}
