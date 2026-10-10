@@ -50,6 +50,20 @@ export function ImportStatement({ account, onImported, onDone }: ImportStatement
         </div>
       );
 
+    case "locked":
+      return (
+        <PasswordPrompt
+          fileName={state.file.name}
+          message={state.message}
+          wrongPassword={state.wrongPassword}
+          onSubmit={async (password) => {
+            const result = await upload(state.file, password);
+            if (result) onImported(result);
+          }}
+          onCancel={reset}
+        />
+      );
+
     case "failed":
       return (
         <div className="import-failed">
@@ -143,6 +157,65 @@ function Dropzone({ onFile, error }: { onFile: (file: File) => void; error: stri
         </li>
       </ul>
     </div>
+  );
+}
+
+/** Asks for a locked PDF's password. It lives only in this form's state and is gone once the dialog moves on. */
+function PasswordPrompt({
+  fileName,
+  message,
+  wrongPassword,
+  onSubmit,
+  onCancel,
+}: {
+  fileName: string;
+  message: string;
+  wrongPassword: boolean;
+  onSubmit: (password: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [password, setPassword] = useState("");
+
+  return (
+    <form
+      className="form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (password !== "") void onSubmit(password);
+      }}
+    >
+      <div className={`callout ${wrongPassword ? "callout--error" : "callout--info"}`} role={wrongPassword ? "alert" : undefined}>
+        <Icon name={wrongPassword ? "alert" : "file"} className="callout__icon" />
+        <div>
+          <p className="callout__title">{fileName} is locked</p>
+          <p className="callout__text">{message}</p>
+        </div>
+      </div>
+      <label className="field">
+        <span className="field__label">PDF password</span>
+        <input
+          className="input"
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          autoComplete="off"
+          autoFocus
+          required
+        />
+        <span className="form__hint">
+          Often a mix of your name and date of birth; your bank's statement email says which. It's used once to open the
+          file and never stored.
+        </span>
+      </label>
+      <div className="dialog__actions">
+        <button type="button" className="button button--ghost" onClick={onCancel}>
+          Choose another file
+        </button>
+        <button type="submit" className="button" disabled={password === ""}>
+          Unlock and import
+        </button>
+      </div>
+    </form>
   );
 }
 

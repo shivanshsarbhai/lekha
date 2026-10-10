@@ -4,7 +4,6 @@ import static com.lekha.statements.StatementChecks.check;
 import static com.lekha.statements.StatementChecks.parseAmount;
 import static com.lekha.statements.StatementChecks.sum;
 
-import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.format.DateTimeFormatter;
@@ -64,13 +63,19 @@ class HdfcCreditCardStatementParser implements StatementParser {
 	}
 
 	@Override
-	public List<StatementEntry> parse(InputStream file) {
-		return parseText(PdfText.lines(file));
+	public String accountKind() {
+		return "an HDFC credit card";
 	}
 
-	List<StatementEntry> parseText(List<String> lines) {
+	@Override
+	public boolean recognises(List<String> lines) {
+		return lines.stream().anyMatch(line -> line.contains(ISSUER));
+	}
+
+	@Override
+	public List<StatementEntry> parseText(List<String> lines) {
 		List<String> stripped = lines.stream().map(String::strip).toList();
-		if (stripped.stream().noneMatch(line -> line.contains(ISSUER))) {
+		if (!recognises(stripped)) {
 			throw new StatementFormatException("This doesn't look like an HDFC credit card statement");
 		}
 		List<StatementEntry> entries = new ArrayList<>();

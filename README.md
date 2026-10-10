@@ -272,9 +272,12 @@ lekha/
 | HDFC Bank | Savings | Supported (single-page statements) |
 | State Bank of India | Savings | Supported, including multi-page statements |
 | HDFC Bank | Credit cards | Supported (tested with Regalia Gold and Swiggy; domestic transactions) |
-| SBI Card | Credit card | Planned |
+| SBI Card | Credit card | Supported (domestic transactions) |
 
 Parsers are pluggable (`StatementParser`), and each new bank is a self-contained parser with its own reconciliation.
+Each parser also recognises its own statements, so a statement uploaded to the wrong kind of account is caught with a
+message naming the right one. Password-protected PDFs are supported: the password is asked for only when needed and is
+used in memory to open the file, never stored.
 
 ## Roadmap
 - Ask questions in plain English, answered by LLM tool calling over read-only queries

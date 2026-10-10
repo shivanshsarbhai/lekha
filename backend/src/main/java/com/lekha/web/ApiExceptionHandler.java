@@ -15,6 +15,7 @@ import com.lekha.categories.CategoryNotFoundException;
 import com.lekha.categories.DuplicateCategoryNameException;
 import com.lekha.categories.InvalidCategoryException;
 import com.lekha.statements.StatementFormatException;
+import com.lekha.statements.StatementPasswordException;
 import com.lekha.statements.UnsupportedAccountException;
 import com.lekha.transactions.InvalidAllocationException;
 import com.lekha.transactions.InvalidDateRangeException;
@@ -48,6 +49,14 @@ class ApiExceptionHandler {
 	@ExceptionHandler({ UnsupportedAccountException.class, StatementFormatException.class })
 	ProblemDetail unprocessable(RuntimeException ex) {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
+	}
+
+	/** {@code code} is PASSWORD_REQUIRED or WRONG_PASSWORD, so the client can ask for the password. */
+	@ExceptionHandler(StatementPasswordException.class)
+	ProblemDetail lockedStatement(StatementPasswordException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
+		problem.setProperty("code", ex.code());
+		return problem;
 	}
 
 }

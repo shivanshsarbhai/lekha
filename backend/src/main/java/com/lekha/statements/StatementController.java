@@ -1,9 +1,9 @@
 package com.lekha.statements;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,11 +21,11 @@ class StatementController {
 		this.service = service;
 	}
 
+	/** {@code password} is only needed for a locked PDF. It is sent as a form field, never in the URL. */
 	@PostMapping
-	StatementImport upload(@PathVariable UUID accountId, @RequestParam MultipartFile file) throws IOException {
-		try (InputStream content = file.getInputStream()) {
-			return service.importStatement(accountId, content);
-		}
+	StatementImport upload(@PathVariable UUID accountId, @RequestParam MultipartFile file,
+			@RequestParam(required = false) @Nullable String password) throws IOException {
+		return service.importStatement(accountId, file.getBytes(), password);
 	}
 
 }

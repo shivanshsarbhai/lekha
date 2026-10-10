@@ -1,14 +1,17 @@
 /**
  * A failed API call. `message` is the server's own explanation (ProblemDetail `detail`) when it sent one, so it can
- * be shown to the user as-is. `status` is 0 when the server could not be reached at all.
+ * be shown to the user as-is. `status` is 0 when the server could not be reached at all. `code` is set for errors the
+ * UI reacts to rather than just shows, such as a locked PDF; branch on it, never on the message wording.
  */
 export class ApiError extends Error {
   readonly status: number;
+  readonly code: string | null;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -53,9 +56,9 @@ async function request<T>(method: Method, path: string, options: RequestOptions 
 /** Errors from our ApiExceptionHandler are ProblemDetail JSON; anything else falls back to a generic message. */
 async function toApiError(response: Response, fallback: string): Promise<ApiError> {
   try {
-    const problem = (await response.json()) as { detail?: unknown };
+    const problem = (await response.json()) as { detail?: unknown; code?: unknown };
     if (typeof problem.detail === "string" && problem.detail !== "") {
-      return new ApiError(response.status, problem.detail);
+      return new ApiError(response.status, problem.detail, typeof problem.code === "string" ? problem.code : null);
     }
   } catch {
     // Not JSON, e.g. the dev proxy's empty 500 when the backend is down.

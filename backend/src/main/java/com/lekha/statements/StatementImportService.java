@@ -1,9 +1,9 @@
 package com.lekha.statements;
 
-import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 import com.lekha.accounts.Account;
@@ -26,17 +26,41 @@ class StatementImportService {
 		this.parsers = parsers;
 	}
 
-	/** Parses the statement fully before saving anything, so a bad file leaves the database untouched. */
-	StatementImport importStatement(UUID accountId, InputStream file) {
+	/**
+	 * Parses the statement fully before saving anything, so a bad file leaves the database untouched. The password,
+	 * if any, only unlocks the PDF in memory.
+	 */
+	StatementImport importStatement(UUID accountId, byte[] pdf, @Nullable String password) {
 		Account account = accounts.getAccount(accountId);
 		StatementParser parser = parsers.stream()
 			.filter(candidate -> candidate.supports(account.institution(), account.type()))
 			.findFirst()
 			.orElseThrow(() -> new UnsupportedAccountException(account));
 
-		List<Transaction> parsed = parser.parse(file).stream().map(entry -> toTransaction(accountId, entry)).toList();
+		List<String> lines = PdfText.lines(pdf, password);
+		if (!parser.recognises(lines)) {
+			throw notThisAccountsStatement(account, parser, lines);
+		}
+
+		List<Transaction> parsed = parser.parseText(lines)
+			.stream()
+			.map(entry -> toTransaction(accountId, entry))
+			.toList();
 		List<Transaction> imported = transactions.recordNew(parsed);
 		return new StatementImport(imported, parsed.size() - imported.size());
+	}
+
+	/** Names the account type the statement belongs to when another parser recognises it. */
+	private StatementFormatException notThisAccountsStatement(Account account, StatementParser parser,
+			List<String> lines) {
+		return parsers.stream()
+			.filter(other -> other != parser && other.recognises(lines))
+			.findFirst()
+			.map(other -> new StatementFormatException("This looks like " + other.accountKind() + " statement, but \""
+					+ account.nickname() + "\" is " + parser.accountKind() + " account. Import it into "
+					+ other.accountKind() + " account instead."))
+			.orElseGet(() -> new StatementFormatException(
+					"This doesn't look like " + parser.accountKind() + " account statement"));
 	}
 
 	private static Transaction toTransaction(UUID accountId, StatementEntry entry) {

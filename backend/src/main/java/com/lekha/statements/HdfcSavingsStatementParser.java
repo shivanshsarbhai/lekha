@@ -4,7 +4,6 @@ import static com.lekha.statements.StatementChecks.check;
 import static com.lekha.statements.StatementChecks.parseAmount;
 import static com.lekha.statements.StatementChecks.sum;
 
-import java.io.InputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -51,11 +50,21 @@ class HdfcSavingsStatementParser implements StatementParser {
 	}
 
 	@Override
-	public List<StatementEntry> parse(InputStream file) {
-		return parseText(PdfText.lines(file));
+	public String accountKind() {
+		return "an HDFC bank";
 	}
 
-	List<StatementEntry> parseText(List<String> lines) {
+	/** HDFC's savings statement is the only one whose transaction table starts with these two column headings. */
+	@Override
+	public boolean recognises(List<String> lines) {
+		return lines.stream().anyMatch(line -> line.strip().startsWith(TABLE_HEADER));
+	}
+
+	@Override
+	public List<StatementEntry> parseText(List<String> lines) {
+		if (!recognises(lines)) {
+			throw new StatementFormatException("This doesn't look like an HDFC bank account statement");
+		}
 		List<Row> rows = parseRows(lines);
 		Summary summary = parseSummary(lines);
 		List<StatementEntry> entries = toEntries(rows, summary.openingBalance());

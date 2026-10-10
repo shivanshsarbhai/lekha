@@ -3,6 +3,7 @@ package com.lekha.statements;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 
 import java.math.BigDecimal;
@@ -44,7 +45,7 @@ class StatementControllerTest {
 		Transaction swiggy = new Transaction(UUID.fromString("22222222-2222-2222-2222-222222222222"), ACCOUNT_ID,
 				LocalDate.of(2026, 9, 3), null, "UPI-SWIGGY", new BigDecimal("-450.00"), new BigDecimal("9550.00"),
 				PaymentMode.UPI, Map.of("reference", "0000111122223333"), Instant.parse("2026-10-01T10:00:00Z"));
-		given(service.importStatement(eq(ACCOUNT_ID), any())).willReturn(new StatementImport(List.of(swiggy), 3));
+		given(service.importStatement(eq(ACCOUNT_ID), any(), isNull())).willReturn(new StatementImport(List.of(swiggy), 3));
 
 		var response = assertThat(upload(ACCOUNT_ID)).hasStatusOk().bodyJson();
 
@@ -58,7 +59,7 @@ class StatementControllerTest {
 
 	@Test
 	void uploadReturns404ForAnUnknownAccount() {
-		given(service.importStatement(eq(ACCOUNT_ID), any())).willThrow(new AccountNotFoundException(ACCOUNT_ID));
+		given(service.importStatement(eq(ACCOUNT_ID), any(), isNull())).willThrow(new AccountNotFoundException(ACCOUNT_ID));
 
 		assertThat(upload(ACCOUNT_ID))
 				.hasStatus(HttpStatus.NOT_FOUND)
@@ -69,7 +70,7 @@ class StatementControllerTest {
 
 	@Test
 	void uploadReturns422WhenTheFileIsNotAValidStatement() {
-		given(service.importStatement(eq(ACCOUNT_ID), any()))
+		given(service.importStatement(eq(ACCOUNT_ID), any(), isNull()))
 			.willThrow(new StatementFormatException("Could not read the file as a PDF"));
 
 		assertThat(upload(ACCOUNT_ID))
@@ -82,13 +83,47 @@ class StatementControllerTest {
 	@Test
 	void uploadReturns422WhenTheAccountTypeIsNotSupported() {
 		Account federal = Account.create("Federal Savings", AccountType.BANK, Institution.FEDERAL_BANK, null);
-		given(service.importStatement(eq(ACCOUNT_ID), any())).willThrow(new UnsupportedAccountException(federal));
+		given(service.importStatement(eq(ACCOUNT_ID), any(), isNull())).willThrow(new UnsupportedAccountException(federal));
 
 		assertThat(upload(ACCOUNT_ID))
 				.hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
 				.bodyJson()
 				.extractingPath("$.detail")
 				.isEqualTo("Statements for FEDERAL_BANK BANK accounts can't be imported yet");
+	}
+
+	@Test
+	void uploadPassesThePasswordThrough() {
+		given(service.importStatement(eq(ACCOUNT_ID), eq(PDF), eq("TEST0101")))
+			.willReturn(new StatementImport(List.of(), 0));
+
+		assertThat(upload(ACCOUNT_ID).param("password", "TEST0101")).hasStatusOk()
+			.bodyJson()
+			.extractingPath("$.skipped")
+			.isEqualTo(0);
+	}
+
+	@Test
+	void uploadReturns422WithACodeForALockedPdf() {
+		given(service.importStatement(eq(ACCOUNT_ID), any(), isNull()))
+			.willThrow(new StatementPasswordException(false));
+
+		var response = assertThat(upload(ACCOUNT_ID)).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT).bodyJson();
+
+		response.extractingPath("$.code").isEqualTo("PASSWORD_REQUIRED");
+		response.extractingPath("$.detail")
+			.isEqualTo("This PDF is password-protected. Enter the password your bank gave you to open it.");
+	}
+
+	@Test
+	void uploadReturns422WithACodeForAWrongPassword() {
+		given(service.importStatement(eq(ACCOUNT_ID), any(), eq("WRONG999")))
+			.willThrow(new StatementPasswordException(true));
+
+		assertThat(upload(ACCOUNT_ID).param("password", "WRONG999")).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
+			.bodyJson()
+			.extractingPath("$.code")
+			.isEqualTo("WRONG_PASSWORD");
 	}
 
 	@Test

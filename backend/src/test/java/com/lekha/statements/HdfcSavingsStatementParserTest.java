@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -115,7 +114,7 @@ class HdfcSavingsStatementParserTest {
 	void rejectsTextThatIsNotAStatement() {
 		assertThatThrownBy(() -> parser.parseText(List.of("Hello", "this is not a statement")))
 				.isInstanceOf(StatementFormatException.class)
-				.hasMessage("Could not find \"Date Narration\" in the statement");
+				.hasMessage("This doesn't look like an HDFC bank account statement");
 	}
 
 	@Test
@@ -132,15 +131,18 @@ class HdfcSavingsStatementParserTest {
 	void readsTheSameStatementFromAPdf() throws IOException {
 		byte[] pdf = TestPdfs.withLines(statement(ROWS, SUMMARY_VALUES));
 
-		assertThat(parser.parse(new ByteArrayInputStream(pdf)))
+		assertThat(parser.parseText(PdfText.lines(pdf, null)))
 				.isEqualTo(parser.parseText(statement(ROWS, SUMMARY_VALUES)));
 	}
 
 	@Test
-	void rejectsAFileThatIsNotAPdf() {
-		assertThatThrownBy(() -> parser.parse(new ByteArrayInputStream("not a pdf".getBytes())))
-				.isInstanceOf(StatementFormatException.class)
-				.hasMessage("Could not read the file as a PDF");
+	void onlyThisParserRecognisesTheStatement() {
+		List<String> lines = statement(ROWS, SUMMARY_VALUES);
+
+		assertThat(parser.recognises(lines)).isTrue();
+		assertThat(new SbiCreditCardStatementParser().recognises(lines)).isFalse();
+		assertThat(new HdfcCreditCardStatementParser().recognises(lines)).isFalse();
+		assertThat(new SbiSavingsStatementParser().recognises(lines)).isFalse();
 	}
 
 	/** Wraps transaction lines in the header, summary and page text that surround them in a real statement. */

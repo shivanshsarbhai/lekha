@@ -8,8 +8,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -43,14 +42,15 @@ class StatementImportServiceTest {
 	private final Account hdfcBank = Account.create("HDFC Salary", AccountType.BANK, Institution.HDFC, null);
 
 	@Test
-	void importsWithTheParserThatSupportsTheAccount() {
+	void importsWithTheParserThatSupportsTheAccount() throws IOException {
 		given(accounts.getAccount(hdfcBank.id())).willReturn(hdfcBank);
-		StatementImportService service = service(new FakeParser(Institution.SBI, AccountType.BANK, List.of()),
-				new FakeParser(Institution.HDFC, AccountType.BANK, List.of(SALARY, SWIGGY)));
+		StatementImportService service = service(
+				new FakeParser(Institution.SBI, AccountType.BANK, "SBI MARKER", List.of()),
+				new FakeParser(Institution.HDFC, AccountType.BANK, "HDFC MARKER", List.of(SALARY, SWIGGY)));
 
 		given(transactions.recordNew(any())).willAnswer(call -> call.getArgument(0));
 
-		List<Transaction> imported = service.importStatement(hdfcBank.id(), emptyFile()).imported();
+		List<Transaction> imported = service.importStatement(hdfcBank.id(), pdf("HDFC MARKER"), null).imported();
 
 		assertThat(imported)
 				.extracting(Transaction::accountId, Transaction::transactionDate, Transaction::settlementDate,
@@ -65,37 +65,78 @@ class StatementImportServiceTest {
 	}
 
 	@Test
-	void reportsHowManyTransactionsWereAlreadyStored() {
+	void reportsHowManyTransactionsWereAlreadyStored() throws IOException {
 		given(accounts.getAccount(hdfcBank.id())).willReturn(hdfcBank);
 		StatementImportService service = service(
-				new FakeParser(Institution.HDFC, AccountType.BANK, List.of(SALARY, SWIGGY)));
+				new FakeParser(Institution.HDFC, AccountType.BANK, "HDFC MARKER", List.of(SALARY, SWIGGY)));
 		given(transactions.recordNew(any())).willAnswer(call -> call.<List<Transaction>>getArgument(0).subList(1, 2));
 
-		StatementImport result = service.importStatement(hdfcBank.id(), emptyFile());
+		StatementImport result = service.importStatement(hdfcBank.id(), pdf("HDFC MARKER"), null);
 
 		assertThat(result.imported()).extracting(Transaction::description).containsExactly("UPI-SWIGGY");
 		assertThat(result.skipped()).isEqualTo(1);
 	}
 
 	@Test
-	void savesNothingForAnUnknownAccount() {
+	void unlocksALockedStatementWithItsPassword() throws IOException {
+		given(accounts.getAccount(hdfcBank.id())).willReturn(hdfcBank);
+		StatementImportService service = service(
+				new FakeParser(Institution.HDFC, AccountType.BANK, "HDFC MARKER", List.of(SALARY)));
+		given(transactions.recordNew(any())).willAnswer(call -> call.getArgument(0));
+		byte[] locked = TestPdfs.locked(List.of("HDFC MARKER"), "TEST0101");
+
+		assertThatThrownBy(() -> service.importStatement(hdfcBank.id(), locked, null))
+			.isInstanceOf(StatementPasswordException.class);
+		assertThat(service.importStatement(hdfcBank.id(), locked, "TEST0101").imported()).hasSize(1);
+	}
+
+	@Test
+	void namesTheRightAccountTypeForAnotherAccountsStatement() throws IOException {
+		given(accounts.getAccount(hdfcBank.id())).willReturn(hdfcBank);
+		StatementImportService service = service(
+				new FakeParser(Institution.HDFC, AccountType.BANK, "HDFC MARKER", List.of(SALARY)),
+				new FakeParser(Institution.HDFC, AccountType.CREDIT_CARD, "CARD MARKER", List.of()));
+
+		assertThatThrownBy(() -> service.importStatement(hdfcBank.id(), pdf("CARD MARKER"), null))
+			.isInstanceOf(StatementFormatException.class)
+			.hasMessage("This looks like an HDFC CREDIT_CARD statement, but \"HDFC Salary\" is an HDFC BANK account. "
+					+ "Import it into an HDFC CREDIT_CARD account instead.");
+		then(transactions).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void saysSoWhenNoParserRecognisesTheStatement() throws IOException {
+		given(accounts.getAccount(hdfcBank.id())).willReturn(hdfcBank);
+		StatementImportService service = service(
+				new FakeParser(Institution.HDFC, AccountType.BANK, "HDFC MARKER", List.of(SALARY)));
+
+		assertThatThrownBy(() -> service.importStatement(hdfcBank.id(), pdf("A restaurant menu"), null))
+			.isInstanceOf(StatementFormatException.class)
+			.hasMessage("This doesn't look like an HDFC BANK account statement");
+		then(transactions).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void savesNothingForAnUnknownAccount() throws IOException {
 		UUID unknown = UUID.randomUUID();
 		given(accounts.getAccount(unknown)).willThrow(new AccountNotFoundException(unknown));
-		StatementImportService service = service(new FakeParser(Institution.HDFC, AccountType.BANK, List.of()));
+		StatementImportService service = service(
+				new FakeParser(Institution.HDFC, AccountType.BANK, "HDFC MARKER", List.of()));
 
-		assertThatThrownBy(() -> service.importStatement(unknown, emptyFile()))
+		assertThatThrownBy(() -> service.importStatement(unknown, pdf("HDFC MARKER"), null))
 				.isInstanceOf(AccountNotFoundException.class)
 				.hasMessage("No account with id " + unknown);
 		then(transactions).shouldHaveNoInteractions();
 	}
 
 	@Test
-	void rejectsAnAccountNoParserSupports() {
+	void rejectsAnAccountNoParserSupports() throws IOException {
 		Account card = Account.create("HDFC Card", AccountType.CREDIT_CARD, Institution.HDFC, null);
 		given(accounts.getAccount(card.id())).willReturn(card);
-		StatementImportService service = service(new FakeParser(Institution.HDFC, AccountType.BANK, List.of()));
+		StatementImportService service = service(
+				new FakeParser(Institution.HDFC, AccountType.BANK, "HDFC MARKER", List.of()));
 
-		assertThatThrownBy(() -> service.importStatement(card.id(), emptyFile()))
+		assertThatThrownBy(() -> service.importStatement(card.id(), pdf("HDFC MARKER"), null))
 				.isInstanceOf(UnsupportedAccountException.class)
 				.hasMessage("Statements for HDFC CREDIT_CARD accounts can't be imported yet");
 		then(transactions).shouldHaveNoInteractions();
@@ -104,12 +145,10 @@ class StatementImportServiceTest {
 	@Test
 	void savesNothingWhenTheFileCannotBeParsed() {
 		given(accounts.getAccount(hdfcBank.id())).willReturn(hdfcBank);
-		StatementParser broken = mock(StatementParser.class);
-		given(broken.supports(Institution.HDFC, AccountType.BANK)).willReturn(true);
-		given(broken.parse(any())).willThrow(new StatementFormatException("Could not read the file as a PDF"));
-		StatementImportService service = service(broken);
+		StatementImportService service = service(
+				new FakeParser(Institution.HDFC, AccountType.BANK, "HDFC MARKER", List.of()));
 
-		assertThatThrownBy(() -> service.importStatement(hdfcBank.id(), emptyFile()))
+		assertThatThrownBy(() -> service.importStatement(hdfcBank.id(), "not a pdf".getBytes(), null))
 				.isInstanceOf(StatementFormatException.class);
 		then(transactions).shouldHaveNoInteractions();
 	}
@@ -118,11 +157,12 @@ class StatementImportServiceTest {
 		return new StatementImportService(accounts, transactions, List.of(parsers));
 	}
 
-	private static InputStream emptyFile() {
-		return new ByteArrayInputStream(new byte[0]);
+	private static byte[] pdf(String text) throws IOException {
+		return TestPdfs.withLines(List.of(text));
 	}
 
-	private record FakeParser(Institution institution, AccountType type,
+	/** Recognises any text containing {@code marker} and reads it as {@code entries}. */
+	private record FakeParser(Institution institution, AccountType type, String marker,
 			List<StatementEntry> entries) implements StatementParser {
 
 		@Override
@@ -131,7 +171,17 @@ class StatementImportServiceTest {
 		}
 
 		@Override
-		public List<StatementEntry> parse(InputStream file) {
+		public String accountKind() {
+			return "an " + institution + " " + type;
+		}
+
+		@Override
+		public boolean recognises(List<String> lines) {
+			return lines.stream().anyMatch(line -> line.contains(marker));
+		}
+
+		@Override
+		public List<StatementEntry> parseText(List<String> lines) {
 			return entries;
 		}
 

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -169,8 +168,18 @@ class SbiSavingsStatementParserTest {
 	void readsTheSameStatementFromAPdf() throws IOException {
 		byte[] pdf = TestPdfs.withLines(statement(ROWS, SUMMARY_VALUES));
 
-		assertThat(parser.parse(new ByteArrayInputStream(pdf)))
+		assertThat(parser.parseText(PdfText.lines(pdf, null)))
 				.isEqualTo(parser.parseText(statement(ROWS, SUMMARY_VALUES)));
+	}
+
+	@Test
+	void onlyThisParserRecognisesTheStatement() {
+		List<String> lines = statement(ROWS, SUMMARY_VALUES);
+
+		assertThat(parser.recognises(lines)).isTrue();
+		assertThat(new SbiCreditCardStatementParser().recognises(lines)).isFalse();
+		assertThat(new HdfcSavingsStatementParser().recognises(lines)).isFalse();
+		assertThat(new HdfcCreditCardStatementParser().recognises(lines)).isFalse();
 	}
 
 	/** Wraps transaction lines in the account details, summary and footer that surround them in a real statement. */
