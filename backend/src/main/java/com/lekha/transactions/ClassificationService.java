@@ -1,8 +1,12 @@
 package com.lekha.transactions;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -14,6 +18,8 @@ import com.lekha.categories.CategoryService;
 /** Saves how a transaction's amount divides into expenses, income, transfers, investments and money lent. */
 @Service
 class ClassificationService {
+
+	private static final BigDecimal ZERO_MONEY = new BigDecimal("0.00");
 
 	private final TransactionRepository transactions;
 
@@ -28,7 +34,10 @@ class ClassificationService {
 		this.categories = categories;
 	}
 
-	/** Replaces the transaction's allocations. An empty list makes it unclassified. */
+	/**
+	 * Replaces the transaction's allocations. An empty list makes it unclassified. Refund pieces are checked against
+	 * the purchases they refund, and a purchase that has refunds keeps enough spending in their categories to cover them.
+	 */
 	@Transactional
 	List<Allocation> classify(UUID transactionId, List<@Nullable AllocationRequest> requests) {
 		Transaction transaction = transactions.findByIdForUpdate(transactionId)
@@ -39,6 +48,8 @@ class ClassificationService {
 		if (!pieces.isEmpty()) {
 			checkTotal(transaction, pieces);
 		}
+		checkRefunds(transactionId, pieces);
+		checkStillCoversItsRefunds(transaction, pieces);
 
 		allocations.replace(transactionId, pieces);
 		return pieces.stream().sorted(Allocation.DISPLAY_ORDER).toList();
@@ -50,7 +61,7 @@ class ClassificationService {
 		}
 		try {
 			return Allocation.create(transactionId, request.kind(), request.categoryId(), request.amount(),
-					request.note());
+					request.note(), request.refundOf());
 		}
 		catch (IllegalArgumentException ex) {
 			throw new InvalidAllocationException(ex.getMessage());
@@ -75,11 +86,90 @@ class ClassificationService {
 	}
 
 	private static void checkTotal(Transaction transaction, List<Allocation> pieces) {
-		BigDecimal total = pieces.stream().map(Allocation::amount).reduce(new BigDecimal("0.00"), BigDecimal::add);
+		BigDecimal total = sum(pieces);
 		if (total.compareTo(transaction.amount()) != 0) {
 			throw new InvalidAllocationException("Allocations add up to " + total.toPlainString()
 					+ " but the transaction is " + transaction.amount().toPlainString());
 		}
+	}
+
+	/**
+	 * Each purchase this transaction refunds must be a spend, in the same category, with enough left unrefunded. The
+	 * purchase row is locked first, so two refunds saved at once can't both take its last rupees.
+	 */
+	private void checkRefunds(UUID transactionId, List<Allocation> pieces) {
+		Map<UUID, List<Allocation>> byPurchase = pieces.stream()
+			.filter(Allocation::isRefundLink)
+			.collect(Collectors.groupingBy(Allocation::refundOf, LinkedHashMap::new, Collectors.toList()));
+
+		for (Map.Entry<UUID, List<Allocation>> entry : byPurchase.entrySet()) {
+			UUID purchaseId = entry.getKey();
+			Transaction purchase = transactions.findByIdForUpdate(purchaseId)
+				.orElseThrow(() -> new InvalidAllocationException("No transaction with id " + purchaseId + " to refund"));
+			List<Allocation> spends = allocations.findByTransactionIds(List.of(purchaseId))
+				.getOrDefault(purchaseId, List.of())
+				.stream()
+				.filter(Allocation::isSpend)
+				.toList();
+			if (spends.isEmpty()) {
+				throw new InvalidAllocationException(
+						quoted(purchase) + " isn't classified as an expense, so it can't be refunded");
+			}
+
+			Set<@Nullable UUID> purchaseCategories = spends.stream().map(Allocation::categoryId).collect(Collectors.toSet());
+			for (Allocation refund : entry.getValue()) {
+				if (!purchaseCategories.contains(refund.categoryId())) {
+					throw new InvalidAllocationException(
+							"A refund must use the same category as the purchase it refunds, " + quoted(purchase));
+				}
+			}
+
+			BigDecimal spent = sum(spends).negate();
+			BigDecimal refundedElsewhere = allocations.refundsOf(purchaseId)
+				.stream()
+				.filter(link -> !link.transactionId().equals(transactionId))
+				.map(AllocationRepository.RefundLink::amount)
+				.reduce(ZERO_MONEY, BigDecimal::add);
+			BigDecimal refunded = refundedElsewhere.add(sum(entry.getValue()));
+			if (refunded.compareTo(spent) > 0) {
+				throw new InvalidAllocationException("Refunds of " + quoted(purchase) + " would add up to "
+						+ refunded.toPlainString() + ", more than the " + spent.toPlainString() + " spent on it");
+			}
+		}
+	}
+
+	/** A purchase can't be re-classified to spend less, or in other categories, than its linked refunds give back. */
+	private void checkStillCoversItsRefunds(Transaction purchase, List<Allocation> pieces) {
+		List<AllocationRepository.RefundLink> refunds = allocations.refundsOf(purchase.id());
+		if (refunds.isEmpty()) {
+			return;
+		}
+		List<Allocation> spends = pieces.stream().filter(Allocation::isSpend).toList();
+		BigDecimal spent = sum(spends).negate();
+		BigDecimal refunded = refunds.stream()
+			.map(AllocationRepository.RefundLink::amount)
+			.reduce(ZERO_MONEY, BigDecimal::add);
+		String names = refunds.stream()
+			.map(link -> "\"" + link.description() + "\"")
+			.distinct()
+			.collect(Collectors.joining(", "));
+		if (spent.compareTo(refunded) < 0) {
+			throw new RefundConflictException(refunded.toPlainString() + " of this purchase was refunded by " + names
+					+ ", so it must stay an expense of at least that much. Unlink the refund first.");
+		}
+		Set<@Nullable UUID> categoriesKept = spends.stream().map(Allocation::categoryId).collect(Collectors.toSet());
+		if (!refunds.stream().allMatch(link -> categoriesKept.contains(link.categoryId()))) {
+			throw new RefundConflictException("This purchase was refunded by " + names
+					+ " in a category it would no longer have. Unlink the refund first.");
+		}
+	}
+
+	private static String quoted(Transaction transaction) {
+		return "\"" + transaction.description() + "\" on " + transaction.transactionDate();
+	}
+
+	private static BigDecimal sum(List<Allocation> pieces) {
+		return pieces.stream().map(Allocation::amount).reduce(ZERO_MONEY, BigDecimal::add);
 	}
 
 }

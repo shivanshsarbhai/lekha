@@ -312,7 +312,19 @@ function LedgerRow({
         <p className="txn__name" title={transaction.description}>
           {name}
         </p>
-        {account && <p className="txn__meta">{account.nickname}</p>}
+        {(account || transaction.refundedAmount > 0 || transaction.refundedPurchases.length > 0) && (
+          <p className="txn__meta">
+            {account && <span>{account.nickname}</span>}
+            {transaction.refundedAmount > 0 && (
+              <span className="txn__refund">{formatMoney(transaction.refundedAmount)} refunded</span>
+            )}
+            {transaction.refundedPurchases.map((purchase) => (
+              <span key={purchase.id} className="txn__refund" title={purchase.description}>
+                Refund of {merchantName(purchase.description)}, {formatShortDate(purchase.transactionDate)}
+              </span>
+            ))}
+          </p>
+        )}
       </div>
       <div className="txn__tag">
         <ClassificationTag allocations={transaction.allocations} categoryLabels={categoryLabels} onClick={onClassify} />
@@ -345,6 +357,12 @@ const dayFormat = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "num
 
 function formatDay(isoDate: string): string {
   return dayFormat.format(new Date(`${isoDate}T00:00:00`));
+}
+
+const shortDateFormat = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" });
+
+function formatShortDate(isoDate: string): string {
+  return shortDateFormat.format(new Date(`${isoDate}T00:00:00`));
 }
 
 function ClassificationTag({

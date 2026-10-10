@@ -6,8 +6,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -24,6 +28,10 @@ public class TransactionService {
 	static final String ORIGINAL_DATE = "originalTransactionDate";
 
 	static final String ORIGINAL_AMOUNT = "originalAmount";
+
+	private static final int REFUND_WINDOW_DAYS = 120;
+
+	private static final int MAX_REFUND_CANDIDATES = 50;
 
 	private final TransactionRepository repository;
 
@@ -53,20 +61,56 @@ public class TransactionService {
 		}
 
 		List<Transaction> transactions = repository.findBetween(accountId, from, to);
-		Map<UUID, List<Allocation>> allocationsById = allocations
-			.findByTransactionIds(transactions.stream().map(Transaction::id).toList());
-		List<ListedTransaction> listed = transactions.stream()
-			.map(transaction -> new ListedTransaction(transaction,
-					allocationsById.getOrDefault(transaction.id(), List.of())))
-			.toList();
-		List<Allocation> pieces = allocationsById.values().stream().flatMap(List::stream).toList();
+		List<ListedTransaction> listed = withClassification(transactions);
 
 		BigDecimal moneyIn = sum(transactions, amount -> amount.signum() > 0);
 		BigDecimal moneyOut = sum(transactions, amount -> amount.signum() < 0);
+		Map<AllocationKind, BigDecimal> totals = allocations.totalsReportedBetween(accountId, from, to);
 		return new TransactionList(listed, moneyIn, moneyOut, moneyIn.add(moneyOut),
-				sum(pieces, AllocationKind.EXPENSE).negate(), sum(pieces, AllocationKind.INCOME),
-				sum(pieces, AllocationKind.INVESTMENT).negate(), sum(pieces, AllocationKind.LENT).negate(),
+				total(totals, AllocationKind.EXPENSE).negate(), total(totals, AllocationKind.INCOME),
+				total(totals, AllocationKind.INVESTMENT).negate(), total(totals, AllocationKind.LENT).negate(),
 				(int) listed.stream().filter(transaction -> !transaction.isClassified()).count());
+	}
+
+	/**
+	 * Purchases the refund could be linked to: classified expenses with money left to refund, from up to 120 days
+	 * before it. {@code search} narrows them by description.
+	 */
+	List<RefundCandidate> refundCandidates(UUID refundId, @Nullable String search) {
+		Transaction refund = repository.findById(refundId).orElseThrow(() -> new TransactionNotFoundException(refundId));
+		String query = search == null || search.isBlank() ? null : search.strip();
+		return allocations.refundCandidates(refund, refund.transactionDate().minusDays(REFUND_WINDOW_DAYS), query,
+				MAX_REFUND_CANDIDATES);
+	}
+
+	/** Attaches each transaction's allocations, what has been refunded on it, and the purchases it refunds. */
+	private List<ListedTransaction> withClassification(List<Transaction> transactions) {
+		List<UUID> ids = transactions.stream().map(Transaction::id).toList();
+		Map<UUID, List<Allocation>> allocationsById = allocations.findByTransactionIds(ids);
+		Map<UUID, BigDecimal> refunded = allocations.refundedAmounts(ids);
+		Set<UUID> purchaseIds = allocationsById.values()
+			.stream()
+			.flatMap(List::stream)
+			.map(Allocation::refundOf)
+			.filter(Objects::nonNull)
+			.collect(Collectors.toSet());
+		Map<UUID, Transaction> purchases = repository.findByIds(purchaseIds)
+			.stream()
+			.collect(Collectors.toMap(Transaction::id, Function.identity()));
+
+		return transactions.stream().map(transaction -> {
+			List<Allocation> pieces = allocationsById.getOrDefault(transaction.id(), List.of());
+			List<ListedTransaction.RefundedPurchase> refundsOf = pieces.stream()
+				.map(Allocation::refundOf)
+				.filter(Objects::nonNull)
+				.distinct()
+				.map(purchases::get)
+				.filter(Objects::nonNull)
+				.map(ListedTransaction.RefundedPurchase::of)
+				.toList();
+			return new ListedTransaction(transaction, pieces, refunded.getOrDefault(transaction.id(), ZERO_MONEY),
+					refundsOf);
+		}).toList();
 	}
 
 	/**
@@ -115,6 +159,11 @@ public class TransactionService {
 		}
 		boolean amountChanged = amount.compareTo(existing.amount()) != 0;
 		if (amountChanged) {
+			BigDecimal refunded = allocations.refundedAmounts(List.of(id)).getOrDefault(id, ZERO_MONEY);
+			if (refunded.signum() > 0) {
+				throw new RefundConflictException(refunded.toPlainString() + " of this purchase has been refunded, so "
+						+ "its amount can't change. Unlink its refunds first.");
+			}
 			metadata.putIfAbsent(ORIGINAL_AMOUNT, existing.amount().toPlainString());
 		}
 		Transaction updated;
@@ -130,19 +179,15 @@ public class TransactionService {
 		if (amountChanged) {
 			allocations.replace(id, List.of());
 		}
-		return new ListedTransaction(updated,
-				allocations.findByTransactionIds(List.of(id)).getOrDefault(id, List.of()));
+		return withClassification(List.of(updated)).getFirst();
 	}
 
 	private static BigDecimal sum(List<Transaction> transactions, Predicate<BigDecimal> include) {
 		return transactions.stream().map(Transaction::amount).filter(include).reduce(ZERO_MONEY, BigDecimal::add);
 	}
 
-	private static BigDecimal sum(List<Allocation> pieces, AllocationKind kind) {
-		return pieces.stream()
-			.filter(piece -> piece.kind() == kind)
-			.map(Allocation::amount)
-			.reduce(ZERO_MONEY, BigDecimal::add);
+	private static BigDecimal total(Map<AllocationKind, BigDecimal> totals, AllocationKind kind) {
+		return Money.of(totals.getOrDefault(kind, ZERO_MONEY));
 	}
 
 	/**

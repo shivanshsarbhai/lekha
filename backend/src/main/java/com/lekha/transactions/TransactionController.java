@@ -1,6 +1,7 @@
 package com.lekha.transactions;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
@@ -29,6 +30,11 @@ class TransactionController {
 			@RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate from,
 			@RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate to) {
 		return service.list(accountId, from, to);
+	}
+
+	@GetMapping("/{id}/refund-candidates")
+	List<RefundCandidate> refundCandidates(@PathVariable UUID id, @RequestParam(required = false) @Nullable String search) {
+		return service.refundCandidates(id, search);
 	}
 
 	@PutMapping("/{id}")

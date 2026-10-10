@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -78,6 +79,25 @@ class TransactionRepository {
 				.param("accountId", accountId)
 				.query(TransactionRepository::mapRow)
 				.list();
+	}
+
+	List<Transaction> findByIds(Collection<UUID> ids) {
+		if (ids.isEmpty()) {
+			return List.of();
+		}
+		return jdbc.sql("""
+				SELECT id, account_id, transaction_date, settlement_date, description, amount,
+				       balance_after, payment_mode, metadata, created_at
+				FROM transactions
+				WHERE id IN (:ids)
+				""")
+				.param("ids", List.copyOf(ids))
+				.query(TransactionRepository::mapRow)
+				.list();
+	}
+
+	Optional<Transaction> findById(UUID id) {
+		return findByIds(List.of(id)).stream().findFirst();
 	}
 
 	/** Transactions dated from {@code from} to {@code to}, both inclusive, newest first. A null account means all. */

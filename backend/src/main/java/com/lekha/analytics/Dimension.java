@@ -8,7 +8,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What results can be grouped and filtered by. Each dimension is a fixed SQL fragment over the query's tables
- * ({@code t} transactions, {@code a} allocations, {@code c} category, {@code pc} its parent, {@code acc} account), so
+ * ({@code t} transactions, {@code a} allocations, {@code r.reported_on} the date a piece counts on, {@code c} category,
+ * {@code pc} its parent, {@code acc} account), so
  * a client can combine them freely but never send SQL of its own.
  */
 enum Dimension {
@@ -20,20 +21,20 @@ enum Dimension {
 	YEAR("year", TimeGrain.YEAR),
 
 	/** MON … SUN. */
-	DAY_OF_WEEK("day_of_week", null, "upper(to_char(t.transaction_date, 'Dy'))",
-			"EXTRACT(ISODOW FROM t.transaction_date)", null),
+	DAY_OF_WEEK("day_of_week", null, "upper(to_char(r.reported_on, 'Dy'))",
+			"EXTRACT(ISODOW FROM r.reported_on)", null),
 	/** WEEKDAY or WEEKEND (Saturday and Sunday). */
 	DAY_TYPE("day_type", null,
-			"CASE WHEN EXTRACT(ISODOW FROM t.transaction_date) >= 6 THEN 'WEEKEND' ELSE 'WEEKDAY' END",
-			"CASE WHEN EXTRACT(ISODOW FROM t.transaction_date) >= 6 THEN 'WEEKEND' ELSE 'WEEKDAY' END", null),
+			"CASE WHEN EXTRACT(ISODOW FROM r.reported_on) >= 6 THEN 'WEEKEND' ELSE 'WEEKDAY' END",
+			"CASE WHEN EXTRACT(ISODOW FROM r.reported_on) >= 6 THEN 'WEEKEND' ELSE 'WEEKDAY' END", null),
 	/** JAN … DEC, for comparing the same month across years. */
-	MONTH_OF_YEAR("month_of_year", null, "upper(to_char(t.transaction_date, 'Mon'))",
-			"EXTRACT(MONTH FROM t.transaction_date)", null),
+	MONTH_OF_YEAR("month_of_year", null, "upper(to_char(r.reported_on, 'Mon'))",
+			"EXTRACT(MONTH FROM r.reported_on)", null),
 	/** EARLY (1st–10th), MID (11th–20th) or LATE (21st onwards) in the month. */
 	MONTH_PHASE("month_phase", null, """
-			CASE WHEN EXTRACT(DAY FROM t.transaction_date) <= 10 THEN 'EARLY'
-			     WHEN EXTRACT(DAY FROM t.transaction_date) <= 20 THEN 'MID' ELSE 'LATE' END""",
-			"EXTRACT(DAY FROM t.transaction_date)", null),
+			CASE WHEN EXTRACT(DAY FROM r.reported_on) <= 10 THEN 'EARLY'
+			     WHEN EXTRACT(DAY FROM r.reported_on) <= 20 THEN 'MID' ELSE 'LATE' END""",
+			"EXTRACT(DAY FROM r.reported_on)", null),
 
 	KIND("kind", null, "a.kind",
 			"CASE a.kind WHEN 'EXPENSE' THEN 1 WHEN 'INCOME' THEN 2 WHEN 'INVESTMENT' THEN 3 WHEN 'LENT' THEN 4 ELSE 5 END",

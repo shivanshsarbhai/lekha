@@ -41,7 +41,7 @@ class TransactionControllerTest {
 				LocalDate.of(2026, 9, 3), null, "UPI-SWIGGY", new BigDecimal("-450.00"), new BigDecimal("9550.00"),
 				PaymentMode.UPI, Map.of(), Instant.parse("2026-10-01T10:00:00Z"));
 		Allocation food = new Allocation(UUID.fromString("44444444-4444-4444-4444-444444444444"), swiggy.id(),
-				AllocationKind.EXPENSE, null, new BigDecimal("-450.00"), null);
+				AllocationKind.EXPENSE, null, new BigDecimal("-450.00"), null, null);
 		given(service.list(null, SEP_1, SEP_30)).willReturn(new TransactionList(
 				List.of(new ListedTransaction(swiggy, List.of(food))), new BigDecimal("0.00"),
 				new BigDecimal("-450.00"), new BigDecimal("-450.00"), new BigDecimal("450.00"), new BigDecimal("0.00"),
@@ -149,6 +149,64 @@ class TransactionControllerTest {
 						{"transactionDate": "2026-09-04", "description": "Rent", "amount": -1.00}
 						"""))
 				.hasStatus(HttpStatus.NOT_FOUND);
+	}
+
+	@Test
+	void listIncludesRefundDetails() {
+		UUID purchaseId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+		Transaction refund = new Transaction(UUID.fromString("22222222-2222-2222-2222-222222222222"), ACCOUNT_ID,
+				LocalDate.of(2026, 9, 9), null, "MYNTRA REFUND", new BigDecimal("1000.00"), null, PaymentMode.CARD,
+				Map.of(), Instant.parse("2026-10-01T10:00:00Z"));
+		Allocation piece = new Allocation(UUID.fromString("44444444-4444-4444-4444-444444444444"), refund.id(),
+				AllocationKind.EXPENSE, null, new BigDecimal("1000.00"), null, purchaseId);
+		BigDecimal zero = new BigDecimal("0.00");
+		given(service.list(null, SEP_1, SEP_30)).willReturn(new TransactionList(
+				List.of(new ListedTransaction(refund, List.of(piece), zero,
+						List.of(new ListedTransaction.RefundedPurchase(purchaseId, SEP_1, "MYNTRA SHOES")))),
+				zero, zero, zero, zero, zero, zero, zero, 0));
+
+		var response = assertThat(mvc.get().uri("/api/v1/transactions?from=2026-09-01&to=2026-09-30"))
+				.hasStatusOk()
+				.bodyJson();
+
+		response.extractingPath("$.transactions[0].allocations[0].refundOf").isEqualTo(purchaseId.toString());
+		response.extractingPath("$.transactions[0].refundedAmount").isEqualTo(0.0);
+		response.extractingPath("$.transactions[0].refundedPurchases[0].description").isEqualTo("MYNTRA SHOES");
+		response.extractingPath("$.transactions[0].refundedPurchases[0].transactionDate").isEqualTo("2026-09-01");
+	}
+
+	@Test
+	void refundCandidatesPassesTheSearchThrough() {
+		UUID id = UUID.fromString("22222222-2222-2222-2222-222222222222");
+		UUID category = UUID.fromString("55555555-5555-5555-5555-555555555555");
+		given(service.refundCandidates(id, "myntra")).willReturn(List.of(new RefundCandidate(
+				UUID.fromString("33333333-3333-3333-3333-333333333333"), ACCOUNT_ID, SEP_1, "MYNTRA SHOES",
+				new BigDecimal("3000.00"), new BigDecimal("2000.00"), List.of(category))));
+
+		var response = assertThat(mvc.get().uri("/api/v1/transactions/{id}/refund-candidates?search=myntra", id))
+				.hasStatusOk()
+				.bodyJson();
+
+		response.extractingPath("$[0].description").isEqualTo("MYNTRA SHOES");
+		response.extractingPath("$[0].refundable").isEqualTo(2000.0);
+		response.extractingPath("$[0].categoryIds[0]").isEqualTo(category.toString());
+	}
+
+	@Test
+	void updateReturns409WhenARefundedPurchasesAmountChanges() {
+		UUID id = UUID.fromString("22222222-2222-2222-2222-222222222222");
+		given(service.update(id, LocalDate.of(2026, 9, 4), "Shoes", new BigDecimal("-2500")))
+			.willThrow(new RefundConflictException("Unlink its refunds first."));
+
+		assertThat(mvc.put().uri("/api/v1/transactions/{id}", id)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"transactionDate": "2026-09-04", "description": "Shoes", "amount": -2500}
+						"""))
+				.hasStatus(HttpStatus.CONFLICT)
+				.bodyJson()
+				.extractingPath("$.detail")
+				.isEqualTo("Unlink its refunds first.");
 	}
 
 	@Test

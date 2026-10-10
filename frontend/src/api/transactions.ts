@@ -16,6 +16,8 @@ export interface Allocation {
   /** Same sign rule as the transaction: negative is money out. */
   amount: number;
   note: string | null;
+  /** The purchase this money came back from. Only set on positive EXPENSE pieces; they count in its month. */
+  refundOf: string | null;
 }
 
 /** One element of the PUT body. Mirrors AllocationRequest.java. */
@@ -25,6 +27,18 @@ export interface AllocationInput {
   /** Signed like the transaction. All pieces together must equal the transaction's amount exactly. */
   amount: number;
   note: string | null;
+  /**
+   * Links a refund to its purchase: kind EXPENSE, a positive amount, and one of the purchase's categories. The server
+   * rejects refunds adding up to more than was spent on it.
+   */
+  refundOf: string | null;
+}
+
+/** Mirrors ListedTransaction.RefundedPurchase. */
+export interface RefundedPurchase {
+  id: string;
+  transactionDate: string;
+  description: string;
 }
 
 /** Mirrors ListedTransaction.java: the bank's fields at the top level, plus how it has been classified. */
@@ -43,6 +57,24 @@ export interface Transaction {
   createdAt: string;
   /** Empty means unclassified. Sorted by kind, then larger amount first. */
   allocations: Allocation[];
+  /** How much of this purchase has come back through linked refunds. 0 for everything else. */
+  refundedAmount: number;
+  /** The purchases this transaction refunds, for its pieces' `refundOf` ids. */
+  refundedPurchases: RefundedPurchase[];
+}
+
+/** Mirrors RefundCandidate.java: a purchase a refund could be linked to. */
+export interface RefundCandidate {
+  id: string;
+  accountId: string;
+  transactionDate: string;
+  description: string;
+  /** Positive: what the purchase's expense pieces spent. */
+  spent: number;
+  /** spent minus refunds already linked to it, not counting the transaction being classified. */
+  refundable: number;
+  /** A refund must use one of these. Empty when the purchase's expense pieces have no category. */
+  categoryIds: string[];
 }
 
 /** Mirrors TransactionList.java. Every total is summed exactly on the server. */
@@ -96,6 +128,15 @@ export function updateTransaction(id: string, edit: TransactionEdit): Promise<Tr
  * Replaces how a transaction is classified. One piece covering the whole amount is a simple classification, several
  * pieces are a split, and an empty list makes it unclassified again. Resolves to the saved pieces, with new ids.
  */
+export function listRefundCandidates(
+  transactionId: string,
+  search: string,
+  signal?: AbortSignal,
+): Promise<RefundCandidate[]> {
+  const query = search.trim() === "" ? "" : `?${new URLSearchParams({ search: search.trim() }).toString()}`;
+  return apiGet<RefundCandidate[]>(`/transactions/${transactionId}/refund-candidates${query}`, signal);
+}
+
 export function classifyTransaction(transactionId: string, pieces: AllocationInput[]): Promise<Allocation[]> {
   return apiPut<AllocationInput[], Allocation[]>(`/transactions/${transactionId}/allocations`, pieces);
 }

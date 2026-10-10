@@ -33,10 +33,10 @@ class ClassificationControllerTest {
 	@Test
 	void putPassesTheRowsThroughAndReturnsTheSavedSplit() {
 		List<AllocationRequest> requests = List.of(
-				new AllocationRequest(AllocationKind.EXPENSE, DINING_OUT, new BigDecimal("-500.00"), "My share"),
-				new AllocationRequest(AllocationKind.LENT, null, new BigDecimal("-1500.00"), null));
+				new AllocationRequest(AllocationKind.EXPENSE, DINING_OUT, new BigDecimal("-500.00"), "My share", null),
+				new AllocationRequest(AllocationKind.LENT, null, new BigDecimal("-1500.00"), null, null));
 		Allocation food = new Allocation(UUID.fromString("44444444-4444-4444-4444-444444444444"), TRANSACTION_ID,
-				AllocationKind.EXPENSE, DINING_OUT, new BigDecimal("-500.00"), "My share");
+				AllocationKind.EXPENSE, DINING_OUT, new BigDecimal("-500.00"), "My share", null);
 		given(service.classify(TRANSACTION_ID, requests)).willReturn(List.of(food));
 
 		var response = assertThat(put("""

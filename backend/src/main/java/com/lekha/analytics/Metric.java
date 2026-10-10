@@ -26,16 +26,16 @@ enum Metric {
 	/** Classified transactions. A split transaction counts once per group it appears in. */
 	TRANSACTION_COUNT("transaction_count", "COUNT(DISTINCT t.id)", Type.COUNT, Set.of()),
 	/**
-	 * Transactions with an expense in them, refunds included. It is what {@link #AVERAGE_SPEND} divides by, so spending
-	 * is always average_spend × spend_count.
+	 * Transactions that spent money. Refunds aren't counted, since they would make the average look smaller than any
+	 * real purchase. It is what {@link #AVERAGE_SPEND} divides by, so spending is always average_spend × spend_count.
 	 */
-	SPEND_COUNT("spend_count", "COUNT(DISTINCT t.id) FILTER (WHERE a.kind = 'EXPENSE')", Type.COUNT,
+	SPEND_COUNT("spend_count", "COUNT(DISTINCT t.id) FILTER (WHERE a.kind = 'EXPENSE' AND a.amount < 0)", Type.COUNT,
 			Set.of("EXPENSE")),
-	/** Spending per transaction that has an expense in it. Null when there are none. */
+	/** Spending, net of refunds, per transaction that spent money. Null when there are none. */
 	AVERAGE_SPEND("average_spend", """
 			ROUND(-SUM(a.amount) FILTER (WHERE a.kind = 'EXPENSE')
-			      / NULLIF(COUNT(DISTINCT t.id) FILTER (WHERE a.kind = 'EXPENSE'), 0), 2)""", Type.DERIVED,
-			Set.of("EXPENSE"));
+			      / NULLIF(COUNT(DISTINCT t.id) FILTER (WHERE a.kind = 'EXPENSE' AND a.amount < 0), 0), 2)""",
+			Type.DERIVED, Set.of("EXPENSE"));
 
 	/** How an empty period is filled: money with 0.00, counts with 0, derived values with null. */
 	enum Type {

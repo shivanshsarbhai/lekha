@@ -12,6 +12,9 @@ import java.util.Set;
  * <p>
  * Result columns: {@code d0_id} (dimensions with ids), {@code d0} label and {@code o0} sort key for each dimension,
  * then {@code m0}, {@code m1}… for each metric.
+ * <p>
+ * Every date filter and time dimension uses {@code r.reported_on}: the purchase's date for a refund linked to one, so
+ * the refund lowers spending in the month the money was spent.
  */
 final class QueryCompiler {
 
@@ -43,7 +46,7 @@ final class QueryCompiler {
 		Map<String, Object> params = new LinkedHashMap<>();
 		params.put("from", query.from());
 		params.put("to", query.to());
-		List<String> where = new ArrayList<>(List.of("t.transaction_date BETWEEN :from AND :to"));
+		List<String> where = new ArrayList<>(List.of("r.reported_on BETWEEN :from AND :to"));
 		Set<String> kinds = query.allocationKinds();
 		if (!kinds.isEmpty()) {
 			where.add("a.kind IN (:kinds)");
@@ -62,6 +65,8 @@ final class QueryCompiler {
 			.append("""
 					FROM allocations a
 					JOIN transactions t ON t.id = a.transaction_id
+					LEFT JOIN transactions rt ON rt.id = a.refund_of
+					CROSS JOIN LATERAL (SELECT COALESCE(rt.transaction_date, t.transaction_date) AS reported_on) r
 					JOIN accounts acc ON acc.id = t.account_id
 					LEFT JOIN categories c ON c.id = a.category_id
 					LEFT JOIN categories pc ON pc.id = c.parent_id

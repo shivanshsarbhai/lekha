@@ -78,7 +78,7 @@ class AnalyticsServiceTest {
 		assertThat(result.columns()).containsExactly("spending", "income", "invested", "lent", "savings_rate",
 				"transaction_count", "average_spend");
 		assertThat(result.rows()).containsExactly(row(money("301.00"), money("150000.00"), money("10000.00"),
-				money("1500.00"), money("0.9980"), 5L, money("150.50")));
+				money("1500.00"), money("0.9980"), 5L, money("301.00")));
 		assertThat(result.unclassifiedCount()).isEqualTo(1);
 	}
 
@@ -92,12 +92,29 @@ class AnalyticsServiceTest {
 	}
 
 	@Test
-	void spendCountOnlyCountsTransactionsWithAnExpenseInThem() {
+	void spendCountOnlyCountsTransactionsThatSpentMoney() {
 		QueryResult result = query(List.of("spend_count", "transaction_count"), List.of("day_type"), Map.of(), SEP_1,
 				SEP_30);
 
-		// Weekdays have the salary, SIP and transfer but no expense; the weekend has the dinner and its refund.
-		assertThat(result.rows()).containsExactly(row("WEEKDAY", 0L, 3L), row("WEEKEND", 2L, 2L));
+		// Weekdays have the salary, SIP and transfer but no expense; the weekend has the dinner and a refund.
+		assertThat(result.rows()).containsExactly(row("WEEKDAY", 0L, 3L), row("WEEKEND", 1L, 2L));
+	}
+
+	@Test
+	void aLinkedRefundCountsInThePurchasesMonthAndDay() {
+		UUID purchase = insertTransaction(hdfc, LocalDate.of(2026, 8, 29), "-3000.00", "CARD");
+		allocate(purchase, "EXPENSE", food, "-3000.00");
+		UUID refund = insertTransaction(hdfc, LocalDate.of(2026, 9, 15), "1000.00", "CARD");
+		allocate(refund, "EXPENSE", food, "1000.00", purchase);
+
+		QueryResult byMonth = query(List.of("spending", "spend_count", "average_spend"), List.of("month"), Map.of(),
+				LocalDate.of(2026, 8, 1), SEP_30);
+		QueryResult byDay = query(List.of("spending"), List.of("day_type"), Map.of(), LocalDate.of(2026, 8, 1),
+				LocalDate.of(2026, 8, 31));
+
+		assertThat(byMonth.rows()).containsExactly(row("2026-08", money("2000.00"), 1L, money("2000.00")),
+				row("2026-09", money("301.00"), 1L, money("301.00")));
+		assertThat(byDay.rows()).containsExactly(row("WEEKEND", money("2000.00")));
 	}
 
 	@Test
@@ -124,7 +141,7 @@ class AnalyticsServiceTest {
 				LocalDate.of(2026, 7, 1), SEP_30);
 
 		assertThat(result.rows()).containsExactly(row("2026-07", money("1000.00"), money("1000.00")),
-				row("2026-08", money("0.00"), null), row("2026-09", money("301.00"), money("150.50")));
+				row("2026-08", money("0.00"), null), row("2026-09", money("301.00"), money("301.00")));
 	}
 
 	@Test
@@ -281,15 +298,21 @@ class AnalyticsServiceTest {
 	}
 
 	private void allocate(UUID transactionId, String kind, @Nullable UUID categoryId, String amount) {
+		allocate(transactionId, kind, categoryId, amount, null);
+	}
+
+	private void allocate(UUID transactionId, String kind, @Nullable UUID categoryId, String amount,
+			@Nullable UUID refundOf) {
 		jdbc.sql("""
-				INSERT INTO allocations (id, transaction_id, kind, category_id, amount, note)
-				VALUES (:id, :transactionId, :kind, :categoryId, :amount, NULL)
+				INSERT INTO allocations (id, transaction_id, kind, category_id, amount, note, refund_of)
+				VALUES (:id, :transactionId, :kind, :categoryId, :amount, NULL, :refundOf)
 				""")
 			.param("id", UUID.randomUUID())
 			.param("transactionId", transactionId)
 			.param("kind", kind)
 			.param("categoryId", categoryId)
 			.param("amount", new BigDecimal(amount))
+			.param("refundOf", refundOf)
 			.update();
 	}
 

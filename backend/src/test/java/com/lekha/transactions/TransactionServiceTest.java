@@ -2,6 +2,7 @@ package com.lekha.transactions;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.BDDMockito.given;
 
 import java.math.BigDecimal;
@@ -322,6 +323,113 @@ class TransactionServiceTest {
 
 		assertThatThrownBy(() -> service.update(unknown, LocalDate.of(2026, 9, 5), "Rent", new BigDecimal("-1.00")))
 			.isInstanceOf(TransactionNotFoundException.class);
+	}
+
+	@Test
+	void aLinkedRefundLowersSpendingInThePurchasesMonth() {
+		Transaction shoes = transaction(hdfc, LocalDate.of(2026, 9, 25), "-3000.00");
+		Transaction refund = transaction(hdfc, LocalDate.of(2026, 10, 3), "1000.00");
+		service.recordNew(List.of(shoes, refund));
+		classify(shoes, allocation(shoes, AllocationKind.EXPENSE, "-3000.00"));
+		classify(refund, refundOf(refund, shoes, "1000.00"));
+
+		TransactionList september = service.list(null, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+		TransactionList october = service.list(null, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31));
+
+		assertThat(september.spending()).isEqualTo(new BigDecimal("2000.00"));
+		assertThat(october.spending()).isEqualTo(new BigDecimal("0.00"));
+		assertThat(october.transactions()).extracting(listed -> listed.transaction().id()).containsExactly(refund.id());
+		assertThat(october.moneyIn()).isEqualTo(new BigDecimal("1000.00"));
+	}
+
+	@Test
+	void listShowsWhatWasRefundedAndWhatARefundIsFor() {
+		Transaction shoes = transaction(hdfc, LocalDate.of(2026, 9, 2), "-3000.00");
+		Transaction refund = transaction(hdfc, LocalDate.of(2026, 9, 9), "1000.00");
+		service.recordNew(List.of(shoes, refund));
+		classify(shoes, allocation(shoes, AllocationKind.EXPENSE, "-3000.00"));
+		classify(refund, refundOf(refund, shoes, "1000.00"));
+
+		TransactionList list = service.list(null, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+
+		ListedTransaction listedRefund = list.transactions().get(0);
+		ListedTransaction listedShoes = list.transactions().get(1);
+		assertThat(listedShoes.refundedAmount()).isEqualTo(new BigDecimal("1000.00"));
+		assertThat(listedShoes.refundedPurchases()).isEmpty();
+		assertThat(listedRefund.refundedAmount()).isEqualTo(new BigDecimal("0.00"));
+		assertThat(listedRefund.refundedPurchases())
+			.containsExactly(new ListedTransaction.RefundedPurchase(shoes.id(), shoes.transactionDate(), "UPI-TEST"));
+	}
+
+	@Test
+	void updateRefusesToChangeTheAmountOfARefundedPurchase() {
+		Transaction shoes = transaction(hdfc, LocalDate.of(2026, 9, 2), "-3000.00");
+		Transaction refund = transaction(hdfc, LocalDate.of(2026, 9, 9), "1000.00");
+		service.recordNew(List.of(shoes, refund));
+		classify(shoes, allocation(shoes, AllocationKind.EXPENSE, "-3000.00"));
+		classify(refund, refundOf(refund, shoes, "1000.00"));
+
+		assertThatThrownBy(() -> service.update(shoes.id(), shoes.transactionDate(), "Shoes", new BigDecimal("-2500")))
+			.isInstanceOf(RefundConflictException.class)
+			.hasMessage("1000.00 of this purchase has been refunded, so its amount can't change. Unlink its refunds "
+					+ "first.");
+
+		ListedTransaction renamed = service.update(shoes.id(), shoes.transactionDate(), "Shoes", shoes.amount());
+		assertThat(renamed.refundedAmount()).isEqualTo(new BigDecimal("1000.00"));
+	}
+
+	@Test
+	void refundCandidatesAreRecentExpensesWithMoneyLeftToRefund() {
+		UUID scapia = insertAccount("Scapia Card");
+		Transaction shoes = described(hdfc, LocalDate.of(2026, 9, 2), "-3000.00", "MYNTRA SHOES");
+		Transaction shirt = described(scapia, LocalDate.of(2026, 9, 5), "-1500.00", "MYNTRA 100%_COTTON");
+		Transaction tooOld = described(hdfc, LocalDate.of(2026, 4, 1), "-900.00", "MYNTRA OLD");
+		Transaction fullyRefunded = described(hdfc, LocalDate.of(2026, 9, 3), "-500.00", "MYNTRA SOCKS");
+		Transaction salary = described(hdfc, LocalDate.of(2026, 9, 1), "-100.00", "MYNTRA TRANSFER");
+		Transaction sockRefund = described(hdfc, LocalDate.of(2026, 9, 6), "500.00", "SOCKS REFUND");
+		Transaction refund = described(hdfc, LocalDate.of(2026, 9, 10), "2000.00", "MYNTRA REFUND");
+		service.recordNew(List.of(shoes, shirt, tooOld, fullyRefunded, salary, sockRefund, refund));
+		classify(shoes, allocation(shoes, AllocationKind.EXPENSE, "-3000.00"));
+		classify(shirt, allocation(shirt, AllocationKind.EXPENSE, "-1500.00"));
+		classify(tooOld, allocation(tooOld, AllocationKind.EXPENSE, "-900.00"));
+		classify(fullyRefunded, allocation(fullyRefunded, AllocationKind.EXPENSE, "-500.00"));
+		classify(salary, allocation(salary, AllocationKind.TRANSFER, "-100.00"));
+		classify(sockRefund, refundOf(sockRefund, fullyRefunded, "500.00"));
+
+		assertThat(service.refundCandidates(refund.id(), null))
+			.extracting(RefundCandidate::description, RefundCandidate::refundable)
+			.containsExactly(tuple("MYNTRA SHOES", new BigDecimal("3000.00")),
+					tuple("MYNTRA 100%_COTTON", new BigDecimal("1500.00")));
+		assertThat(service.refundCandidates(refund.id(), " 100%_ ")).extracting(RefundCandidate::id)
+			.containsExactly(shirt.id());
+		assertThat(service.refundCandidates(refund.id(), "100%X")).isEmpty();
+	}
+
+	@Test
+	void refundCandidatesIgnoreWhatTheRefundItselfAlreadyRefunds() {
+		Transaction shoes = transaction(hdfc, LocalDate.of(2026, 9, 2), "-3000.00");
+		Transaction refund = transaction(hdfc, LocalDate.of(2026, 9, 9), "3000.00");
+		service.recordNew(List.of(shoes, refund));
+		classify(shoes, allocation(shoes, AllocationKind.EXPENSE, "-3000.00"));
+		classify(refund, refundOf(refund, shoes, "3000.00"));
+
+		assertThat(service.refundCandidates(refund.id(), null)).extracting(RefundCandidate::refundable)
+			.containsExactly(new BigDecimal("3000.00"));
+	}
+
+	@Test
+	void refundCandidatesOfAnUnknownTransactionThrow() {
+		assertThatThrownBy(() -> service.refundCandidates(UUID.randomUUID(), null))
+			.isInstanceOf(TransactionNotFoundException.class);
+	}
+
+	private static Allocation refundOf(Transaction refund, Transaction purchase, String amount) {
+		return Allocation.create(refund.id(), AllocationKind.EXPENSE, null, new BigDecimal(amount), null,
+				purchase.id());
+	}
+
+	private static Transaction described(UUID accountId, LocalDate date, String amount, String description) {
+		return Transaction.create(accountId, date, null, description, new BigDecimal(amount), null, null, Map.of());
 	}
 
 	private UUID insertAccount(String nickname) {

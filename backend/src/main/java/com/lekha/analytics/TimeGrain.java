@@ -12,12 +12,12 @@ import java.util.List;
  */
 enum TimeGrain {
 
-	DAY("to_char(t.transaction_date, 'YYYY-MM-DD')"),
+	DAY("to_char(r.reported_on, 'YYYY-MM-DD')"),
 	/** ISO weeks, starting on Monday, labelled by that Monday's date. */
-	WEEK("to_char(date_trunc('week', t.transaction_date), 'YYYY-MM-DD')"),
-	MONTH("to_char(t.transaction_date, 'YYYY-MM')"),
-	QUARTER("to_char(t.transaction_date, 'YYYY-\"Q\"Q')"),
-	YEAR("to_char(t.transaction_date, 'YYYY')");
+	WEEK("to_char(date_trunc('week', r.reported_on), 'YYYY-MM-DD')"),
+	MONTH("to_char(r.reported_on, 'YYYY-MM')"),
+	QUARTER("to_char(r.reported_on, 'YYYY-\"Q\"Q')"),
+	YEAR("to_char(r.reported_on, 'YYYY')");
 
 	private final String labelSql;
 

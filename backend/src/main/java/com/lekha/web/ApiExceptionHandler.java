@@ -19,6 +19,7 @@ import com.lekha.statements.UnsupportedAccountException;
 import com.lekha.transactions.InvalidAllocationException;
 import com.lekha.transactions.InvalidDateRangeException;
 import com.lekha.transactions.InvalidTransactionException;
+import com.lekha.transactions.RefundConflictException;
 import com.lekha.transactions.TransactionNotFoundException;
 
 /** Turns the exceptions our features throw on purpose into HTTP responses whose message the user can act on. */
@@ -33,7 +34,7 @@ class ApiExceptionHandler {
 	}
 
 	@ExceptionHandler({ DuplicateAccountNicknameException.class, AccountInUseException.class,
-			DuplicateCategoryNameException.class, CategoryInUseException.class })
+			DuplicateCategoryNameException.class, CategoryInUseException.class, RefundConflictException.class })
 	ProblemDetail conflict(RuntimeException ex) {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
 	}
