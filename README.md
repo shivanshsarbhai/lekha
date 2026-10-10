@@ -23,6 +23,7 @@ Banking apps show you *cash flow*: money in and money out. That's not the same a
 | You paid ₹2,000 for dinner and three friends owe you ₹1,500 | ₹2,000 spent | ₹500 on Dining out, ₹1,500 lent |
 | You moved ₹50,000 to your own savings account | ₹50,000 out | Transfer, not spending |
 | ₹10,000 SIP into a mutual fund | ₹10,000 out | Invested |
+| You redeemed ₹4,000 from a fund | ₹4,000 in | Taken out of investments, so net invested drops by ₹4,000 |
 | Amazon refunded ₹799 | ₹799 in | Shopping spend reduced by ₹799 |
 
 ## Features
@@ -53,12 +54,21 @@ Banking apps show you *cash flow*: money in and money out. That's not the same a
   skipped.
 - Every figure is an exact server-side aggregate of your allocations, so dashboard totals always match the ledger.
 
+### Investments
+- **Money put in, money taken out, net invested** and the share of income invested, for this or last financial year
+  (April to March), the last 12 months or the last 5 years.
+- **Month by month:** contributions above the line and redemptions below it, with months where nothing went in marked.
+- **By category,** with sub-categories (add one per fund to follow each fund on its own).
+- **Regularity:** a category-by-month grid that shows which SIPs were missed.
+- Redemptions and maturities are Investment pieces that bring money in; an FD maturity is split into principal
+  (Investment) and interest (Income). Lekha tracks what you invested from your statements, not market value.
+
 ### Semantic layer
 Every dashboard is powered by one query endpoint over a small, fixed vocabulary of **metrics** and **dimensions**:
 
 | Metrics | Dimensions |
 |---|---|
-| `spending`, `income`, `invested`, `lent`, `savings_rate`, `transaction_count`, `spend_count`, `average_spend` | Time: `day`, `week`, `month`, `quarter`, `year`<br/>Calendar: `day_of_week`, `day_type` (weekday / weekend), `month_of_year`, `month_phase` (early / mid / late)<br/>Money: `kind`, `category`, `subcategory`, `account`, `payment_mode` |
+| `spending`, `income`, `invested`, `invested_in`, `invested_out`, `investment_rate`, `lent`, `savings_rate`, `transaction_count`, `spend_count`, `average_spend` | Time: `day`, `week`, `month`, `quarter`, `year`<br/>Calendar: `day_of_week`, `day_type` (weekday / weekend), `month_of_year`, `month_phase` (early / mid / late)<br/>Money: `kind`, `category`, `subcategory`, `account`, `payment_mode` |
 
 A question like *"How much did I spend on food at weekends this month?"* is one request:
 

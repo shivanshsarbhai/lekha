@@ -3,6 +3,7 @@ import { Icon, type IconName } from "./components/Icon";
 import { AccountsPage } from "./features/accounts/AccountsPage";
 import { CategoriesPage } from "./features/categories/CategoriesPage";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
+import { InvestmentsPage } from "./features/investments/InvestmentsPage";
 import { SystemStatus } from "./features/system/SystemStatus";
 import { TransactionsPage } from "./features/transactions/TransactionsPage";
 
@@ -17,6 +18,7 @@ const NAV: { heading: string; items: NavEntry[] }[] = [
     heading: "Overview",
     items: [
       { label: "Dashboard", icon: "grid", to: "/dashboard" },
+      { label: "Investments", icon: "trend", to: "/investments" },
       { label: "Transactions", icon: "list", to: "/transactions" },
     ],
   },
@@ -85,6 +87,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/investments" element={<InvestmentsPage />} />
           <Route path="/accounts" element={<AccountsPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
           <Route path="/categories" element={<CategoriesPage />} />

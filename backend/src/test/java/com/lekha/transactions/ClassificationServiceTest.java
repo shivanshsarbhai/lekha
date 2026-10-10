@@ -56,7 +56,7 @@ class ClassificationServiceTest {
 
 	private UUID salary;
 
-	private UUID mutualFundRedemption;
+	private UUID cardBillPayment;
 
 	@BeforeEach
 	void setUp() {
@@ -67,7 +67,7 @@ class ClassificationServiceTest {
 				""").param("id", account).update();
 		diningOut = stubCategory("Dining out", CategoryKind.EXPENSE);
 		salary = stubCategory("Salary", CategoryKind.INCOME);
-		mutualFundRedemption = stubCategory("Mutual fund redemption", CategoryKind.TRANSFER);
+		cardBillPayment = stubCategory("Credit card bill payment", CategoryKind.TRANSFER);
 	}
 
 	@Test
@@ -144,12 +144,12 @@ class ClassificationServiceTest {
 
 	@Test
 	void savesATransferWithItsCategory() {
-		UUID redemption = insertTransaction("25000.00");
+		UUID billPayment = insertTransaction("-25000.00");
 
-		assertThat(service.classify(redemption,
-				List.of(request(AllocationKind.TRANSFER, mutualFundRedemption, "25000.00", null))))
+		assertThat(service.classify(billPayment,
+				List.of(request(AllocationKind.TRANSFER, cardBillPayment, "-25000.00", null))))
 			.extracting(Allocation::categoryId)
-			.containsExactly(mutualFundRedemption);
+			.containsExactly(cardBillPayment);
 	}
 
 	@Test

@@ -14,8 +14,20 @@ enum Metric {
 	SPENDING("spending", "COALESCE(-SUM(a.amount) FILTER (WHERE a.kind = 'EXPENSE'), 0.00)", Type.MONEY,
 			Set.of("EXPENSE")),
 	INCOME("income", "COALESCE(SUM(a.amount) FILTER (WHERE a.kind = 'INCOME'), 0.00)", Type.MONEY, Set.of("INCOME")),
+	/** Net: money put into investments less money that came back from them, e.g. a redemption or a maturity. */
 	INVESTED("invested", "COALESCE(-SUM(a.amount) FILTER (WHERE a.kind = 'INVESTMENT'), 0.00)", Type.MONEY,
 			Set.of("INVESTMENT")),
+	INVESTED_IN("invested_in",
+			"COALESCE(-SUM(a.amount) FILTER (WHERE a.kind = 'INVESTMENT' AND a.amount < 0), 0.00)", Type.MONEY,
+			Set.of("INVESTMENT")),
+	INVESTED_OUT("invested_out",
+			"COALESCE(SUM(a.amount) FILTER (WHERE a.kind = 'INVESTMENT' AND a.amount > 0), 0.00)", Type.MONEY,
+			Set.of("INVESTMENT")),
+	/** Net invested ÷ income, to 4 decimals. Null when there is no income to divide by. */
+	INVESTMENT_RATE("investment_rate", """
+			ROUND(COALESCE(-SUM(a.amount) FILTER (WHERE a.kind = 'INVESTMENT'), 0)
+			      / NULLIF(SUM(a.amount) FILTER (WHERE a.kind = 'INCOME'), 0), 4)""", Type.DERIVED,
+			Set.of("INVESTMENT", "INCOME")),
 	LENT("lent", "COALESCE(-SUM(a.amount) FILTER (WHERE a.kind = 'LENT'), 0.00)", Type.MONEY, Set.of("LENT")),
 	/** (income − spending) ÷ income, to 4 decimals. Null when there is no income to divide by. */
 	SAVINGS_RATE("savings_rate", """

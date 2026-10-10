@@ -118,6 +118,29 @@ class AnalyticsServiceTest {
 	}
 
 	@Test
+	void moneyBackFromAnInvestmentIsCountedOutAndNettedOffWhatWentIn() {
+		allocate(insertTransaction(hdfc, LocalDate.of(2026, 8, 7), "-2500.00", null), "INVESTMENT", null,
+				"-2500.00");
+		allocate(insertTransaction(hdfc, LocalDate.of(2026, 9, 20), "4000.00", "NEFT"), "INVESTMENT", null,
+				"4000.00");
+
+		QueryResult result = query(List.of("invested_in", "invested_out", "invested", "investment_rate"),
+				List.of("month"), Map.of(), LocalDate.of(2026, 8, 1), SEP_30);
+
+		// August has no income to divide by. September: (10000 − 4000) ÷ 150000.
+		assertThat(result.rows()).containsExactly(
+				row("2026-08", money("2500.00"), money("0.00"), money("2500.00"), null),
+				row("2026-09", money("10000.00"), money("4000.00"), money("6000.00"), money("0.0400")));
+	}
+
+	@Test
+	void investmentRateIsZeroWhenThereIsIncomeButNothingInvested() {
+		QueryResult result = query(List.of("investment_rate"), List.of(), Map.of(), SEP_1, LocalDate.of(2026, 9, 6));
+
+		assertThat(result.rows()).containsExactly(row(money("0.0000")));
+	}
+
+	@Test
 	void filteringOnALabelDimensionWithoutGroupingByIt() {
 		QueryResult result = query(List.of("spending"), List.of(), Map.of("day_type", List.of("WEEKEND")), SEP_1,
 				SEP_30);

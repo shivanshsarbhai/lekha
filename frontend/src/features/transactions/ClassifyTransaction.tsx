@@ -34,7 +34,7 @@ export const KIND_HINTS: Record<PieceKind, string> = {
   EXPENSE: "Money you actually spent. A refund you can't match to a purchase goes here, in its category.",
   INCOME: "Salary, interest, dividends and other earnings.",
   TRANSFER: "Moving money between your own accounts. Counts nowhere.",
-  INVESTMENT: "SIPs, stocks, FDs, PPF and similar.",
+  INVESTMENT: "SIPs, stocks, FDs, PPF and similar. Money coming back, like a redemption, is an Investment too.",
   LENT: "Paid on someone's behalf, or lent. Repayments come back as Lent too.",
   REFUND: "Money back for an earlier purchase. It lowers spending in the purchase's month.",
 };

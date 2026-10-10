@@ -9,6 +9,7 @@ const PATHS = {
   card: "M3 7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7zm0 3h18M7 15h4",
   list: "M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01",
   chart: "M4 20V10m6 10V4m6 16v-7m4 7H2",
+  trend: "M3 17l6-6 4 4 8-8m0 0h-5m5 0v5",
   split: "M16 3h5v5M8 3H3v5m0 8v5h5m13-5v5h-5M21 3l-7 7M3 21l7-7",
   wallet: "M20 7V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2h13a2 2 0 002-2v-1M20 7h-5a3 3 0 000 6h5V7z",
   arrowDown: "M12 5v14m0 0l-6-6m6 6l6-6",

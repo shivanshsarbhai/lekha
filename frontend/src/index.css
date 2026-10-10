@@ -3439,6 +3439,186 @@ mark {
   color: var(--text-muted);
 }
 
+/* ==========================================================================
+   Investments
+   ========================================================================== */
+
+.invest-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.1rem;
+}
+
+.invest-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 1.2rem 1.35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.invest-tile--net {
+  background:
+    radial-gradient(20rem 10rem at 0% 0%, color-mix(in srgb, var(--brand) 10%, transparent), transparent 70%),
+    var(--surface);
+}
+
+.invest-tile__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.invest-tile__value {
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.invest-tile--net .invest-tile__value {
+  color: var(--brand);
+}
+
+.invest-tile__hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* Month by month: money in rises above the line, money out hangs below it */
+
+.flows {
+  --out-share: 0;
+  display: flex;
+  gap: 3px;
+}
+
+.flows__month {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.flows__in,
+.flows__out {
+  display: flex;
+  width: 100%;
+  max-width: 2.4rem;
+}
+
+.flows__in {
+  align-items: flex-end;
+  height: 9rem;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.flows__out {
+  align-items: flex-start;
+  height: calc(9rem * var(--out-share));
+}
+
+.flows__bar {
+  display: block;
+  width: 100%;
+  border-radius: 6px 6px 2px 2px;
+  background: var(--brand);
+  transform-origin: bottom;
+  animation: rise-up 0.7s var(--ease) both;
+}
+
+.flows__bar--out {
+  border-radius: 2px 2px 6px 6px;
+  background: var(--saffron);
+  transform-origin: top;
+}
+
+.flows__month--gap .flows__in {
+  background: repeating-linear-gradient(-45deg, transparent, transparent 4px, var(--bg-subtle) 4px, var(--bg-subtle) 7px);
+  border-radius: 6px 6px 0 0;
+}
+
+.flows__month--future {
+  opacity: 0.35;
+}
+
+.flows__label {
+  height: 1.1rem;
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Regularity grid */
+
+.regularity {
+  overflow-x: auto;
+}
+
+.regularity__table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 3px;
+  font-size: 0.8rem;
+}
+
+.regularity__month,
+.regularity__count {
+  padding: 0 0.2rem 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.regularity__name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 8rem;
+  padding-right: 0.75rem;
+  background: var(--surface);
+  font-weight: 550;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.regularity__cell {
+  min-width: 3rem;
+  height: 2.1rem;
+  border-radius: 7px;
+  background: hsl(var(--hue) 58% 46% / 0.16);
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.regularity__cell--empty {
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.regularity__count {
+  padding-left: 0.6rem;
+  text-align: right;
+}
+
+@media (max-width: 760px) {
+  .invest-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 520px) {
   .bar,
   .bar--small {
