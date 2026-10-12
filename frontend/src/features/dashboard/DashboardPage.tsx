@@ -7,9 +7,19 @@ import { hueOf } from "../../lib/hue";
 import { currentMonth, formatMonth, isMonth, monthRange, type Month } from "../../lib/month";
 import { useAccounts } from "../accounts/useAccounts";
 import { Bar, byValue, compactMoney, Panel, PanelEmpty, share, type Scope } from "./panels";
+import { DrillDownProvider } from "./DrillDown";
+import { drillable, rangeLabel, useDrillDown } from "./drill";
 import { useAnalyticsQuery } from "./useAnalyticsQuery";
 
 export function DashboardPage() {
+  return (
+    <DrillDownProvider>
+      <Dashboard />
+    </DrillDownProvider>
+  );
+}
+
+function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const monthParam = searchParams.get("month");
   const month: Month = isMonth(monthParam) ? monthParam : currentMonth();
@@ -93,7 +103,7 @@ export function DashboardPage() {
         </div>
       ) : (
         <>
-          <Hero summary={summary} from={scope.from} to={scope.to} />
+          <Hero summary={summary} scope={scope} />
 
           {unclassified > 0 && (
             <Link className="nudge" to={`${transactionsLink}&unclassified=1`}>
@@ -135,7 +145,13 @@ interface Summary {
   spend_count: number | null;
 }
 
-function Hero({ summary, from, to }: { summary: Summary | undefined; from: string; to: string }) {
+function Hero({ summary, scope }: { summary: Summary | undefined; scope: Scope }) {
+  const openDrillDown = useDrillDown();
+  const { from, to } = scope;
+  function open(metric: "spending" | "income" | "invested" | "lent", title: string) {
+    openDrillDown({ title, subtitle: rangeLabel(from, to), query: { metric, ...scope } });
+  }
+
   if (summary === undefined) {
     return (
       <section className="hero hero--loading" aria-label="Loading the month">
@@ -154,15 +170,16 @@ function Hero({ summary, from, to }: { summary: Summary | undefined; from: strin
   const leftOver = income - spent - invested - lent;
   const whole = Math.max(income, spent + invested + Math.max(lent, 0));
   const parts = [
-    { key: "spent", label: "Spent", value: spent },
-    { key: "invested", label: "Invested", value: invested },
-    { key: "lent", label: "Lent", value: Math.max(lent, 0) },
-    { key: "left", label: leftOver >= 0 ? "Left over" : "Over income", value: Math.abs(leftOver) },
-  ].filter((part) => part.value > 0);
+    { key: "spent", label: "Spent", value: spent, metric: "spending" },
+    { key: "invested", label: "Invested", value: invested, metric: "invested" },
+    { key: "lent", label: "Lent", value: Math.max(lent, 0), metric: "lent" },
+    { key: "left", label: leftOver >= 0 ? "Left over" : "Over income", value: Math.abs(leftOver), metric: null },
+  ] as const;
+  const shown = parts.filter((part) => part.value > 0);
 
   return (
     <section className="hero">
-      <div className="hero__main">
+      <div className="hero__main drillable" {...drillable(() => open("spending", "Spending"), "See what you spent on")}>
         <p className="hero__label">Total spent</p>
         <p className="hero__value num">{formatWholeMoney(spent)}</p>
         <p className="hero__meta">
@@ -172,7 +189,7 @@ function Hero({ summary, from, to }: { summary: Summary | undefined; from: strin
 
       <div className="hero__split">
         <div className="hero__split-head">
-          <div>
+          <div className="drillable" {...drillable(() => open("income", "Income"), "See where your income came from")}>
             <p className="hero__label">Income</p>
             <p className="hero__income num">{formatWholeMoney(income)}</p>
           </div>
@@ -186,7 +203,7 @@ function Hero({ summary, from, to }: { summary: Summary | undefined; from: strin
         {whole > 0 && (
           <>
             <div className="stack" role="img" aria-label="How this month's income was used">
-              {parts.map((part) => (
+              {shown.map((part) => (
                 <span
                   key={part.key}
                   className={`stack__part stack__part--${part.key}${part.key === "left" && leftOver < 0 ? " stack__part--over" : ""}`}
@@ -196,8 +213,14 @@ function Hero({ summary, from, to }: { summary: Summary | undefined; from: strin
               ))}
             </div>
             <ul className="legend">
-              {parts.map((part) => (
-                <li key={part.key} className="legend__item">
+              {shown.map((part) => (
+                <li
+                  key={part.key}
+                  className={`legend__item${part.metric !== null ? " drillable" : ""}`}
+                  {...(part.metric !== null
+                    ? drillable(() => open(part.metric, part.label), `See what makes up ${part.label.toLowerCase()}`)
+                    : {})}
+                >
                   <span
                     className={`legend__dot stack__part--${part.key}${part.key === "left" && leftOver < 0 ? " stack__part--over" : ""}`}
                   />
@@ -221,6 +244,14 @@ function Hero({ summary, from, to }: { summary: Summary | undefined; from: strin
 function SpendingByCategory({ scope }: { scope: Scope }) {
   const state = useAnalyticsQuery({ metrics: ["spending"], dimensions: ["category"], ...scope });
   const [openId, setOpenId] = useState<string | null>(null);
+  const openDrillDown = useDrillDown();
+  function openUncategorised() {
+    openDrillDown({
+      title: "Uncategorised spending",
+      subtitle: rangeLabel(scope.from, scope.to),
+      query: { metric: "spending", ...scope, filters: { ...scope.filters, category: ["none"] } },
+    });
+  }
 
   return (
     <Panel title="Where it went" subtitle="Spending by category. Open one to see what's inside." size="full" state={state}>
@@ -243,7 +274,7 @@ function SpendingByCategory({ scope }: { scope: Scope }) {
                     max={max}
                     detail={share(row.spending ?? 0, total)}
                     expanded={id !== null ? open : undefined}
-                    onClick={id !== null ? () => setOpenId(open ? null : id) : undefined}
+                    onClick={id !== null ? () => setOpenId(open ? null : id) : openUncategorised}
                   />
                   {open && <SubcategoryBreakdown scope={scope} categoryId={id} hueName={row.category} />}
                 </li>
@@ -263,6 +294,14 @@ function SubcategoryBreakdown({ scope, categoryId, hueName }: { scope: Scope; ca
     ...scope,
     filters: { ...scope.filters, category: [categoryId] },
   });
+  const openDrillDown = useDrillDown();
+  function open(title: string, filters: Scope["filters"]) {
+    openDrillDown({
+      title,
+      subtitle: rangeLabel(scope.from, scope.to),
+      query: { metric: "spending", ...scope, filters: { ...scope.filters, ...filters } },
+    });
+  }
 
   if (state.status === "loading") {
     return (
@@ -277,20 +316,25 @@ function SubcategoryBreakdown({ scope, categoryId, hueName }: { scope: Scope; ca
   const max = Math.max(0, ...items.map((row) => row.spending ?? 0));
   return (
     <ul className="bars bars__nested" style={{ "--hue": hueOf(hueName) } as CSSProperties}>
-      {items.map((row) => (
-        <li key={row.subcategory_id ?? "none"}>
-          <Bar
-            label={
-              row.subcategory_id === categoryId
-                ? "Not in a sub-category"
-                : (row.subcategory.split(" › ").at(-1) ?? row.subcategory)
-            }
-            value={row.spending ?? 0}
-            max={max}
-            small
-          />
-        </li>
-      ))}
+      {items.map((row) => {
+        const id = row.subcategory_id;
+        return (
+          <li key={id ?? "none"}>
+            <Bar
+              label={id === categoryId ? "Not in a sub-category" : (row.subcategory.split(" › ").at(-1) ?? row.subcategory)}
+              value={row.spending ?? 0}
+              max={max}
+              small
+              onClick={id !== null ? () => open(row.subcategory, { subcategory: [id] }) : undefined}
+            />
+          </li>
+        );
+      })}
+      <li>
+        <button type="button" className="link-button bars__all" onClick={() => open(hueName, { category: [categoryId] })}>
+          See every {hueName} transaction
+        </button>
+      </li>
     </ul>
   );
 }
@@ -304,6 +348,17 @@ const PHASES = [
 function ThroughTheMonth({ scope }: { scope: Scope }) {
   const daily = useAnalyticsQuery({ metrics: ["spending"], dimensions: ["day"], ...scope });
   const phases = useAnalyticsQuery({ metrics: ["spending"], dimensions: ["month_phase"], ...scope });
+  const openDrillDown = useDrillDown();
+  function openDay(day: string) {
+    openDrillDown({ title: "Spending", subtitle: formatLocalDate(day), query: { metric: "spending", ...scope, from: day, to: day } });
+  }
+  function openPhase(phase: (typeof PHASES)[number]) {
+    openDrillDown({
+      title: `Spending, ${phase.label}`,
+      subtitle: rangeLabel(scope.from, scope.to),
+      query: { metric: "spending", ...scope, filters: { ...scope.filters, month_phase: [phase.key] } },
+    });
+  }
 
   return (
     <Panel title="Through the month" subtitle="Daily spending. Weekends are shaded." size="full" state={daily}>
@@ -315,14 +370,15 @@ function ThroughTheMonth({ scope }: { scope: Scope }) {
         );
         return (
           <>
-            <div className="daily" role="img" aria-label="Spending for each day of the month">
+            <div className="daily" role="group" aria-label="Spending for each day of the month">
               {rows.map((row) => {
                 const value = row.spending ?? 0;
                 const dayNumber = Number(row.day.slice(8, 10));
                 return (
                   <div
                     key={row.day}
-                    className={`daily__day${isWeekend(row.day) ? " daily__day--weekend" : ""}${row === biggest ? " daily__day--peak" : ""}`}
+                    className={`daily__day drillable${isWeekend(row.day) ? " daily__day--weekend" : ""}${row === biggest ? " daily__day--peak" : ""}`}
+                    {...drillable(() => openDay(row.day), `See spending on ${formatLocalDate(row.day)}`)}
                   >
                     <span className="daily__tip num">
                       {formatLocalDate(row.day)} · {formatWholeMoney(value)}
@@ -338,7 +394,10 @@ function ThroughTheMonth({ scope }: { scope: Scope }) {
             </div>
             <div className="phases">
               {biggest !== undefined && (biggest.spending ?? 0) > 0 && (
-                <div className="phases__item phases__item--peak">
+                <div
+                  className="phases__item phases__item--peak drillable"
+                  {...drillable(() => openDay(biggest.day), "See the biggest day's spending")}
+                >
                   <span className="phases__label">Biggest day</span>
                   <span className="phases__value num">{formatWholeMoney(biggest.spending ?? 0)}</span>
                   <span className="phases__hint">{formatLocalDate(biggest.day)}</span>
@@ -350,7 +409,11 @@ function ThroughTheMonth({ scope }: { scope: Scope }) {
                     ? phases.result.rows.find((candidate) => candidate.month_phase === phase.key)
                     : undefined;
                 return (
-                  <div key={phase.key} className="phases__item">
+                  <div
+                    key={phase.key}
+                    className="phases__item drillable"
+                    {...drillable(() => openPhase(phase), `See spending from the ${phase.label}`)}
+                  >
                     <span className="phases__label">{phase.label}</span>
                     <span className="phases__value num">
                       {phases.status === "success" ? formatWholeMoney(row?.spending ?? 0) : "…"}
@@ -373,6 +436,14 @@ function WeekdaysAndWeekends({ scope }: { scope: Scope }) {
     ...scope,
   });
   const days = countDays(scope.from, scope.to);
+  const openDrillDown = useDrillDown();
+  function open(type: "WEEKDAY" | "WEEKEND", label: string) {
+    openDrillDown({
+      title: `Spending on ${label.toLowerCase()}`,
+      subtitle: rangeLabel(scope.from, scope.to),
+      query: { metric: "spending", ...scope, filters: { ...scope.filters, day_type: [type] } },
+    });
+  }
 
   return (
     <Panel title="Weekdays vs weekends" subtitle="Saturdays and Sundays against the rest." state={state}>
@@ -400,7 +471,11 @@ function WeekdaysAndWeekends({ scope }: { scope: Scope }) {
           <div className="versus">
             {insight !== null && <p className="versus__insight">{insight}</p>}
             {stats.map((stat) => (
-              <div key={stat.type} className={`versus__row versus__row--${stat.type.toLowerCase()}`}>
+              <div
+                key={stat.type}
+                className={`versus__row versus__row--${stat.type.toLowerCase()} drillable`}
+                {...drillable(() => open(stat.type, stat.label), `See spending on ${stat.label.toLowerCase()}`)}
+              >
                 <div className="versus__head">
                   <span className="versus__label">{stat.label}</span>
                   <span className="versus__value num">{formatWholeMoney(stat.perDay)}</span>
@@ -437,6 +512,14 @@ const WEEKDAYS = [
 
 function DaysOfTheWeek({ scope }: { scope: Scope }) {
   const state = useAnalyticsQuery({ metrics: ["spending"], dimensions: ["day_of_week"], ...scope });
+  const openDrillDown = useDrillDown();
+  function open(day: (typeof WEEKDAYS)[number]) {
+    openDrillDown({
+      title: `Spending on ${day.name}s`,
+      subtitle: rangeLabel(scope.from, scope.to),
+      query: { metric: "spending", ...scope, filters: { ...scope.filters, day_of_week: [day.key] } },
+    });
+  }
 
   return (
     <Panel title="By day of the week" subtitle="Which days cost the most." state={state}>
@@ -452,11 +535,15 @@ function DaysOfTheWeek({ scope }: { scope: Scope }) {
                 <strong>{peakDay.name}s</strong> cost the most: {formatWholeMoney(max)}
               </p>
             )}
-            <div className="columns" role="img" aria-label="Spending by day of the week">
+            <div className="columns" role="group" aria-label="Spending by day of the week">
               {WEEKDAYS.map((day, i) => {
                 const value = values[i] ?? 0;
                 return (
-                  <div key={day.key} className={`columns__item${i === peak && max > 0 ? " columns__item--peak" : ""}`}>
+                  <div
+                    key={day.key}
+                    className={`columns__item drillable${i === peak && max > 0 ? " columns__item--peak" : ""}`}
+                    {...drillable(() => open(day), `See spending on ${day.name}s`)}
+                  >
                     <span className="columns__value num">{value > 0 ? compactMoney(value) : ""}</span>
                     <span className="columns__track">
                       <span

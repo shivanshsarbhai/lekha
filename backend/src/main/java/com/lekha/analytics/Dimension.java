@@ -48,6 +48,9 @@ enum Dimension {
 	ACCOUNT("account", "acc.id", "acc.nickname", "lower(acc.nickname)", null),
 	PAYMENT_MODE("payment_mode", null, "t.payment_mode", "t.payment_mode", "UNKNOWN");
 
+	/** The filter value for "no category". */
+	static final String NO_ID = "none";
+
 	private final String key;
 
 	/** When set, the dimension returns this id next to its label, and is filtered by it. */
@@ -108,10 +111,14 @@ enum Dimension {
 		return grain != null;
 	}
 
-	/** Filter values are compared as text: ids for dimensions that have one, labels otherwise. */
+	/**
+	 * Filter values are compared as text: ids for dimensions that have one, labels otherwise. A dimension whose id can
+	 * be missing, such as an expense with no category, matches it with {@link #NO_ID}.
+	 */
 	String filterSql() {
 		if (idSql != null) {
-			return "CAST(" + idSql + " AS text)";
+			return nullLabel != null ? "COALESCE(CAST(" + idSql + " AS text), '" + NO_ID + "')"
+					: "CAST(" + idSql + " AS text)";
 		}
 		return nullLabel != null ? "COALESCE(" + labelSql + ", '" + nullLabel + "')" : labelSql;
 	}

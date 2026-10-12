@@ -27,6 +27,8 @@ class AnalyticsService {
 
 	static final int MAX_YEARS = 5;
 
+	static final int MAX_PIECES = 500;
+
 	private final AnalyticsRepository repository;
 
 	AnalyticsService(AnalyticsRepository repository) {
@@ -81,23 +83,67 @@ class AnalyticsService {
 			throw new InvalidQueryException("Group by at most one of day, week, month, quarter and year");
 		}
 
-		Map<Dimension, List<String>> filters = new LinkedHashMap<>();
-		if (request.filters() != null) {
-			for (Map.Entry<String, List<String>> filter : request.filters().entrySet()) {
-				Dimension dimension = dimension(filter.getKey());
-				if (dimension.isTime()) {
-					throw new InvalidQueryException(
-							"Filter time with \"from\" and \"to\" rather than \"" + filter.getKey() + "\"");
-				}
-				if (filter.getValue() == null || filter.getValue().isEmpty()) {
-					throw new InvalidQueryException("Filter \"" + filter.getKey() + "\" needs at least one value");
-				}
-				filters.put(dimension, List.copyOf(filter.getValue()));
-			}
-		}
-
+		Map<Dimension, List<String>> filters = filters(request.filters());
 		LocalDate from = request.from();
 		LocalDate to = request.to();
+		checkRange(from, to);
+		if (dimensions.contains(Dimension.DAY) && ChronoUnit.DAYS.between(from, to) + 1 > MAX_DAYS_BY_DAY) {
+			throw new InvalidQueryException(
+					"Grouping by day allows at most " + MAX_DAYS_BY_DAY + " days. Try week or month.");
+		}
+
+		return new SemanticQuery(List.copyOf(metrics), List.copyOf(dimensions), filters, from, to);
+	}
+
+	/**
+	 * The pieces behind one figure: the total is the same number {@link #query} gives for the same metric and
+	 * filters, and the biggest {@link #MAX_PIECES} pieces are listed.
+	 */
+	PieceList pieces(PiecesRequest request) {
+		PieceQuery query = validate(request);
+		List<PieceList.Piece> pieces = repository.pieces(query, MAX_PIECES);
+		Map.Entry<BigDecimal, Integer> total = repository.pieceTotal(query);
+		return new PieceList(total.getKey(), total.getValue(), total.getValue() > pieces.size(), pieces);
+	}
+
+	private static PieceQuery validate(PiecesRequest request) {
+		if (request.metric() == null) {
+			throw new InvalidQueryException("Ask for one metric: " + Metric.drillableKeys());
+		}
+		Metric metric = Metric.byKey(request.metric())
+			.orElseThrow(() -> new InvalidQueryException(
+					"Unknown metric \"" + request.metric() + "\". Use one of: " + Metric.drillableKeys()));
+		if (metric.pieces() == null) {
+			throw new InvalidQueryException("\"" + metric.key()
+					+ "\" isn't a sum of money, so it has no pieces to list. Use one of: " + Metric.drillableKeys());
+		}
+		Map<Dimension, List<String>> filters = filters(request.filters());
+		LocalDate from = request.from();
+		LocalDate to = request.to();
+		checkRange(from, to);
+		return new PieceQuery(metric, filters, from, to);
+	}
+
+	private static Map<Dimension, List<String>> filters(@Nullable Map<String, List<String>> requested) {
+		Map<Dimension, List<String>> filters = new LinkedHashMap<>();
+		if (requested == null) {
+			return filters;
+		}
+		for (Map.Entry<String, List<String>> filter : requested.entrySet()) {
+			Dimension dimension = dimension(filter.getKey());
+			if (dimension.isTime()) {
+				throw new InvalidQueryException(
+						"Filter time with \"from\" and \"to\" rather than \"" + filter.getKey() + "\"");
+			}
+			if (filter.getValue() == null || filter.getValue().isEmpty()) {
+				throw new InvalidQueryException("Filter \"" + filter.getKey() + "\" needs at least one value");
+			}
+			filters.put(dimension, List.copyOf(filter.getValue()));
+		}
+		return filters;
+	}
+
+	private static void checkRange(@Nullable LocalDate from, @Nullable LocalDate to) {
 		if (from == null || to == null) {
 			throw new InvalidQueryException("\"from\" and \"to\" are both required");
 		}
@@ -107,12 +153,6 @@ class AnalyticsService {
 		if (to.isAfter(from.plusYears(MAX_YEARS).minusDays(1))) {
 			throw new InvalidQueryException("The date range must be at most " + MAX_YEARS + " years");
 		}
-		if (dimensions.contains(Dimension.DAY) && ChronoUnit.DAYS.between(from, to) + 1 > MAX_DAYS_BY_DAY) {
-			throw new InvalidQueryException(
-					"Grouping by day allows at most " + MAX_DAYS_BY_DAY + " days. Try week or month.");
-		}
-
-		return new SemanticQuery(List.copyOf(metrics), List.copyOf(dimensions), filters, from, to);
 	}
 
 	private static Dimension dimension(String key) {

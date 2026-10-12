@@ -4,9 +4,11 @@ import { AccountSelect } from "../../components/Filters";
 import { Icon } from "../../components/Icon";
 import { formatWholeMoney } from "../../lib/format";
 import { hueOf } from "../../lib/hue";
-import { currentMonth, monthRange, shiftMonth, type Month } from "../../lib/month";
+import { currentMonth, formatMonth as formatMonthName, monthRange, shiftMonth, type Month } from "../../lib/month";
 import { useAccounts } from "../accounts/useAccounts";
 import { Bar, byValue, compactMoney, Panel, PanelEmpty, share, type Scope } from "../dashboard/panels";
+import { drillable, rangeLabel, useDrillDown } from "../dashboard/drill";
+import { DrillDownProvider } from "../dashboard/DrillDown";
 import { useAnalyticsQuery } from "../dashboard/useAnalyticsQuery";
 
 /* ------------------------------------------------------------------------------------------------------------------
@@ -70,6 +72,14 @@ function shortMonth(month: Month, withYear = false): string {
    ------------------------------------------------------------------------------------------------------------------ */
 
 export function InvestmentsPage() {
+  return (
+    <DrillDownProvider>
+      <Investments />
+    </DrillDownProvider>
+  );
+}
+
+function Investments() {
   const [searchParams, setSearchParams] = useSearchParams();
   const periodParam = searchParams.get("period");
   const period: Period = isPeriod(periodParam) ? periodParam : "this-fy";
@@ -171,7 +181,7 @@ export function InvestmentsPage() {
         </div>
       ) : (
         <>
-          <Summary summary={summary} />
+          <Summary summary={summary} scope={scope} />
 
           {unclassified > 0 && (
             <Link className="nudge" to="/transactions?unclassified=1">
@@ -212,7 +222,8 @@ interface Totals {
   income: number | null;
 }
 
-function Summary({ summary }: { summary: Totals | undefined }) {
+function Summary({ summary, scope }: { summary: Totals | undefined; scope: Scope }) {
+  const openDrillDown = useDrillDown();
   if (summary === undefined) {
     return (
       <section className="invest-tiles" aria-label="Loading totals">
@@ -228,21 +239,30 @@ function Summary({ summary }: { summary: Totals | undefined }) {
 
   const net = summary.invested ?? 0;
   const tiles = [
-    { key: "in", label: "Put in", value: formatWholeMoney(summary.invested_in ?? 0), hint: "SIPs, stocks, FDs and more" },
+    {
+      key: "in",
+      label: "Put in",
+      value: formatWholeMoney(summary.invested_in ?? 0),
+      hint: "SIPs, stocks, FDs and more",
+      metric: "invested_in",
+    },
     {
       key: "out",
+      metric: "invested_out",
       label: "Taken out",
       value: formatWholeMoney(summary.invested_out ?? 0),
       hint: "Redemptions and maturities",
     },
     {
       key: "net",
+      metric: "invested",
       label: "Net invested",
       value: net < 0 ? `−${formatWholeMoney(-net)}` : formatWholeMoney(net),
       hint: "Put in minus taken out",
     },
     {
       key: "rate",
+      metric: null,
       label: "Share of income",
       value: summary.investment_rate !== null ? `${Math.round(summary.investment_rate * 100)}%` : "—",
       hint:
@@ -250,12 +270,26 @@ function Summary({ summary }: { summary: Totals | undefined }) {
           ? `Net invested out of ${formatWholeMoney(summary.income ?? 0)} income`
           : "No income classified in this period",
     },
-  ];
+  ] as const;
 
   return (
     <section className="invest-tiles">
       {tiles.map((tile) => (
-        <div key={tile.key} className={`invest-tile invest-tile--${tile.key}`}>
+        <div
+          key={tile.key}
+          className={`invest-tile invest-tile--${tile.key}${tile.metric !== null ? " drillable" : ""}`}
+          {...(tile.metric !== null
+            ? drillable(
+                () =>
+                  openDrillDown({
+                    title: tile.label,
+                    subtitle: rangeLabel(scope.from, scope.to),
+                    query: { metric: tile.metric, ...scope },
+                  }),
+                `See what makes up ${tile.label.toLowerCase()}`,
+              )
+            : {})}
+        >
           <p className="invest-tile__label">{tile.label}</p>
           <p className="invest-tile__value num">{tile.value}</p>
           <p className="invest-tile__hint">{tile.hint}</p>
@@ -272,6 +306,14 @@ function Summary({ summary }: { summary: Totals | undefined }) {
 function MonthByMonth({ scope, months, elapsed }: { scope: Scope; months: Month[]; elapsed: Month[] }) {
   const state = useAnalyticsQuery({ metrics: ["invested_in", "invested_out"], dimensions: ["month"], ...scope });
   const today = currentMonth();
+  const openDrillDown = useDrillDown();
+  function open(month: Month) {
+    openDrillDown({
+      title: "Money in and out of investments",
+      subtitle: formatMonthName(month),
+      query: { metric: "invested", ...scope, ...monthRange(month) },
+    });
+  }
 
   return (
     <Panel
@@ -304,14 +346,15 @@ function MonthByMonth({ scope, months, elapsed }: { scope: Scope; months: Month[
             )}
             <div
               className="flows"
-              role="img"
+              role="group"
               aria-label="Money put into and taken out of investments each month"
               style={{ "--out-share": max > 0 ? maxOut / max : 0 } as CSSProperties}
             >
               {values.map((value, i) => (
                 <div
                   key={value.month}
-                  className={`flows__month${value.month > today ? " flows__month--future" : ""}${value.in === 0 && value.month <= today ? " flows__month--gap" : ""}`}
+                  {...drillable(() => open(value.month), `See investments in ${formatMonthName(value.month)}`)}
+                  className={`flows__month drillable${value.month > today ? " flows__month--future" : ""}${value.in === 0 && value.month <= today ? " flows__month--gap" : ""}`}
                   title={`${shortMonth(value.month, true)}: ${formatWholeMoney(value.in)} in${value.out > 0 ? `, ${formatWholeMoney(value.out)} out` : ""}`}
                 >
                   <span className="flows__in">
@@ -339,6 +382,14 @@ function MonthByMonth({ scope, months, elapsed }: { scope: Scope; months: Month[
 function ByCategory({ scope }: { scope: Scope }) {
   const state = useAnalyticsQuery({ metrics: ["invested_in", "invested_out"], dimensions: ["category"], ...scope });
   const [openId, setOpenId] = useState<string | null>(null);
+  const openDrillDown = useDrillDown();
+  function openUncategorised() {
+    openDrillDown({
+      title: "Uncategorised investments",
+      subtitle: rangeLabel(scope.from, scope.to),
+      query: { metric: "invested", ...scope, filters: { ...scope.filters, category: ["none"] } },
+    });
+  }
 
   return (
     <Panel title="Where it went" subtitle="Money put in by category. Open one to see what's inside." size="full" state={state}>
@@ -366,7 +417,7 @@ function ByCategory({ scope }: { scope: Scope }) {
                     max={max}
                     detail={parts.filter((part) => part !== "").join(" · ")}
                     expanded={id !== null ? open : undefined}
-                    onClick={id !== null ? () => setOpenId(open ? null : id) : undefined}
+                    onClick={id !== null ? () => setOpenId(open ? null : id) : openUncategorised}
                   />
                   {open && <SubcategoryBreakdown scope={scope} categoryId={id} hueName={row.category} />}
                 </li>
@@ -386,6 +437,23 @@ function SubcategoryBreakdown({ scope, categoryId, hueName }: { scope: Scope; ca
     ...scope,
     filters: { ...scope.filters, category: [categoryId] },
   });
+  const openDrillDown = useDrillDown();
+  function open(title: string, metric: "invested" | "invested_in", filters: Scope["filters"]) {
+    openDrillDown({
+      title,
+      subtitle: rangeLabel(scope.from, scope.to),
+      query: { metric, ...scope, filters: { ...scope.filters, ...filters } },
+    });
+  }
+  const seeAll = (
+    <button
+      type="button"
+      className="link-button bars__all"
+      onClick={() => open(`${hueName}: money in and out`, "invested", { category: [categoryId] })}
+    >
+      See every {hueName} transaction
+    </button>
+  );
 
   if (state.status === "loading") {
     return (
@@ -397,24 +465,32 @@ function SubcategoryBreakdown({ scope, categoryId, hueName }: { scope: Scope; ca
   if (state.status === "error") return <p className="bars__nested panel__error">{state.message}</p>;
 
   const items = byValue(state.result.rows.filter((row) => (row.invested_in ?? 0) !== 0), (row) => row.invested_in);
-  if (items.length === 0) return <p className="bars__nested panel__empty">Only money taken out here.</p>;
+  if (items.length === 0) {
+    return (
+      <div className="bars__nested">
+        <p className="panel__empty">Only money taken out here.</p>
+        {seeAll}
+      </div>
+    );
+  }
   const max = Math.max(0, ...items.map((row) => row.invested_in ?? 0));
   return (
     <ul className="bars bars__nested" style={{ "--hue": hueOf(hueName) } as CSSProperties}>
-      {items.map((row) => (
-        <li key={row.subcategory_id ?? "none"}>
-          <Bar
-            label={
-              row.subcategory_id === categoryId
-                ? "Not in a sub-category"
-                : (row.subcategory.split(" › ").at(-1) ?? row.subcategory)
-            }
-            value={row.invested_in ?? 0}
-            max={max}
-            small
-          />
-        </li>
-      ))}
+      {items.map((row) => {
+        const id = row.subcategory_id;
+        return (
+          <li key={id ?? "none"}>
+            <Bar
+              label={id === categoryId ? "Not in a sub-category" : (row.subcategory.split(" › ").at(-1) ?? row.subcategory)}
+              value={row.invested_in ?? 0}
+              max={max}
+              small
+              onClick={id !== null ? () => open(`${row.subcategory}: put in`, "invested_in", { subcategory: [id] }) : undefined}
+            />
+          </li>
+        );
+      })}
+      <li>{seeAll}</li>
     </ul>
   );
 }
@@ -422,6 +498,19 @@ function SubcategoryBreakdown({ scope, categoryId, hueName }: { scope: Scope; ca
 function Regularity({ scope, elapsed }: { scope: Scope; elapsed: Month[] }) {
   const state = useAnalyticsQuery({ metrics: ["invested_in"], dimensions: ["category", "month"], ...scope });
   const scroller = useRef<HTMLDivElement>(null);
+  const openDrillDown = useDrillDown();
+  function open(category: { id: string | null; name: string }, month: Month) {
+    openDrillDown({
+      title: `${category.name}: put in`,
+      subtitle: formatMonthName(month),
+      query: {
+        metric: "invested_in",
+        ...scope,
+        ...monthRange(month),
+        filters: { ...scope.filters, category: [category.id ?? "none"] },
+      },
+    });
+  }
 
   // Long periods scroll sideways; start at the most recent months.
   useLayoutEffect(() => {
@@ -484,7 +573,10 @@ function Regularity({ scope, elapsed }: { scope: Scope; elapsed: Month[] }) {
                       return (
                         <td
                           key={month}
-                          className={`regularity__cell${value > 0 ? "" : " regularity__cell--empty"}`}
+                          className={`regularity__cell${value > 0 ? " drillable" : " regularity__cell--empty"}`}
+                          {...(value > 0
+                            ? drillable(() => open(line, month), `See ${line.name} in ${formatMonthName(month)}`)
+                            : {})}
                           title={`${line.name}, ${shortMonth(month, true)}: ${formatWholeMoney(value)}`}
                         >
                           <span className="num">{value > 0 ? compactMoney(value) : "–"}</span>

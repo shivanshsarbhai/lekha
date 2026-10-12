@@ -1,10 +1,12 @@
 package com.lekha.analytics;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
@@ -32,6 +34,27 @@ class AnalyticsRepository {
 	List<Row> run(SemanticQuery query, int limit) {
 		QueryCompiler.CompiledQuery compiled = QueryCompiler.compile(query, limit);
 		return jdbc.sql(compiled.sql()).params(compiled.params()).query((rs, rowNum) -> mapRow(rs, query)).list();
+	}
+
+	List<PieceList.Piece> pieces(PieceQuery query, int limit) {
+		QueryCompiler.CompiledQuery compiled = QueryCompiler.compilePieces(query, limit);
+		return jdbc.sql(compiled.sql()).params(compiled.params()).query((rs, rowNum) -> new PieceList.Piece(
+				rs.getObject("id", UUID.class), rs.getObject("transaction_id", UUID.class),
+				rs.getObject("transaction_date", LocalDate.class), rs.getObject("reported_on", LocalDate.class),
+				rs.getString("description"), rs.getBigDecimal("transaction_amount"), rs.getString("payment_mode"),
+				rs.getObject("account_id", UUID.class), rs.getString("account"), rs.getString("kind"),
+				rs.getObject("category_id", UUID.class), rs.getString("category"), rs.getString("note"),
+				rs.getObject("refund_of", UUID.class), rs.getBigDecimal("contribution"), rs.getInt("piece_count") > 1))
+			.list();
+	}
+
+	/** The metric over every matching piece, and how many there are. */
+	Map.Entry<BigDecimal, Integer> pieceTotal(PieceQuery query) {
+		QueryCompiler.CompiledQuery compiled = QueryCompiler.compilePieceTotal(query);
+		return jdbc.sql(compiled.sql())
+			.params(compiled.params())
+			.query((rs, rowNum) -> Map.entry(rs.getBigDecimal("total"), rs.getInt("pieces")))
+			.single();
 	}
 
 	/** Transactions in the range with no allocations at all, optionally only in some accounts. */

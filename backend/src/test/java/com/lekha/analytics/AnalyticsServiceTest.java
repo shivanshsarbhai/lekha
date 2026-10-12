@@ -2,6 +2,7 @@ package com.lekha.analytics;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -264,6 +265,132 @@ class AnalyticsServiceTest {
 		assertThatThrownBy(() -> service.query(new AnalyticsQueryRequest(List.of("spending"), null, null, null, null)))
 			.isInstanceOf(InvalidQueryException.class)
 			.hasMessage("\"from\" and \"to\" are both required");
+	}
+
+	@Test
+	void piecesAlwaysAddUpToTheFigureTheQueryGives() {
+		UUID purchase = insertTransaction(hdfc, LocalDate.of(2026, 8, 29), "-3000.00", "CARD");
+		allocate(purchase, "EXPENSE", food, "-3000.00");
+		allocate(insertTransaction(hdfc, SEP_30, "1000.00", "CARD"), "EXPENSE", food, "1000.00", purchase);
+		allocate(insertTransaction(hdfc, LocalDate.of(2026, 9, 20), "4000.00", "NEFT"), "INVESTMENT", null,
+				"4000.00");
+		allocate(insertTransaction(hdfc, LocalDate.of(2026, 9, 21), "-50.00", "UPI"), "EXPENSE", null, "-50.00");
+
+		List<Map<String, List<String>>> filterSets = List.of(Map.of(), Map.of("day_type", List.of("WEEKEND")),
+				Map.of("category", List.of(food.toString())), Map.of("category", List.of("none")),
+				Map.of("subcategory", List.of(delivery.toString()), "payment_mode", List.of("UPI")),
+				Map.of("account", List.of(hdfc.toString())));
+		for (String metric : List.of("spending", "income", "invested", "invested_in", "invested_out", "lent")) {
+			for (Map<String, List<String>> filters : filterSets) {
+				for (LocalDate from : List.of(LocalDate.of(2026, 8, 1), SEP_1)) {
+					BigDecimal figure = (BigDecimal) query(List.of(metric), List.of(), filters, from, SEP_30).rows()
+						.getFirst()
+						.getFirst();
+					PieceList pieces = pieces(metric, filters, from, SEP_30);
+
+					String asked = metric + " " + filters + " from " + from;
+					assertThat(pieces.total()).as(asked).isEqualByComparingTo(figure);
+					assertThat(pieces.pieces().stream().map(PieceList.Piece::contribution)
+						.reduce(BigDecimal.ZERO, BigDecimal::add)).as(asked).isEqualByComparingTo(figure);
+					assertThat(pieces.count()).as(asked).isEqualTo(pieces.pieces().size());
+					assertThat(pieces.truncated()).as(asked).isFalse();
+				}
+			}
+		}
+	}
+
+	@Test
+	void spendingPiecesAreBiggestFirstWithRefundsTakingAway() {
+		PieceList result = pieces("spending", Map.of(), SEP_1, SEP_30);
+
+		assertThat(result.total()).isEqualByComparingTo("301.00");
+		assertThat(result.pieces()).extracting(PieceList.Piece::contribution, PieceList.Piece::category,
+				PieceList.Piece::split, PieceList.Piece::transactionAmount)
+			.containsExactly(
+					tuple(money("500.00"), "Test Food › Test Delivery", true,
+							money("-2000.00")),
+					tuple(money("-199.00"), "Test Food", false, money("199.00")));
+		assertThat(result.pieces().getFirst().account()).isEqualTo("HDFC Salary");
+		assertThat(result.pieces().getFirst().kind()).isEqualTo("EXPENSE");
+	}
+
+	@Test
+	void aLinkedRefundIsListedUnderThePurchasesMonth() {
+		UUID purchase = insertTransaction(hdfc, LocalDate.of(2026, 8, 29), "-3000.00", "CARD");
+		allocate(purchase, "EXPENSE", food, "-3000.00");
+		UUID refund = insertTransaction(hdfc, LocalDate.of(2026, 9, 15), "1000.00", "CARD");
+		allocate(refund, "EXPENSE", food, "1000.00", purchase);
+
+		PieceList august = pieces("spending", Map.of(), LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31));
+
+		assertThat(august.total()).isEqualByComparingTo("2000.00");
+		PieceList.Piece listedRefund = august.pieces().get(1);
+		assertThat(listedRefund.transactionId()).isEqualTo(refund);
+		assertThat(listedRefund.transactionDate()).isEqualTo(LocalDate.of(2026, 9, 15));
+		assertThat(listedRefund.reportedOn()).isEqualTo(LocalDate.of(2026, 8, 29));
+		assertThat(listedRefund.refundOf()).isEqualTo(purchase);
+	}
+
+	@Test
+	void noneFiltersToExpensesWithoutACategory() {
+		allocate(insertTransaction(hdfc, LocalDate.of(2026, 9, 10), "-50.00", "UPI"), "EXPENSE", null, "-50.00");
+
+		QueryResult result = query(List.of("spending"), List.of(), Map.of("category", List.of("none")), SEP_1,
+				SEP_30);
+		PieceList pieces = pieces("spending", Map.of("category", List.of("none")), SEP_1, SEP_30);
+
+		assertThat(result.rows()).containsExactly(row(money("50.00")));
+		assertThat(pieces.pieces()).singleElement().satisfies(piece -> {
+			assertThat(piece.categoryId()).isNull();
+			assertThat(piece.category()).isNull();
+		});
+	}
+
+	@Test
+	void onlyTheBiggestPiecesAreListedButTheTotalCountsThemAll() {
+		jdbc.sql("""
+				WITH t AS (
+				    INSERT INTO transactions (id, account_id, transaction_date, description, amount, payment_mode,
+				                              metadata, created_at)
+				    SELECT gen_random_uuid(), :account, DATE '2026-09-12', 'TEST ' || n, -n, 'UPI', '{}'::jsonb, now()
+				    FROM generate_series(1, 500) n
+				    RETURNING id, amount)
+				INSERT INTO allocations (id, transaction_id, kind, category_id, amount, note, refund_of)
+				SELECT gen_random_uuid(), id, 'EXPENSE', :food, amount, NULL, NULL FROM t
+				""").param("account", hdfc).param("food", food).update();
+
+		PieceList result = pieces("spending", Map.of(), SEP_1, SEP_30);
+
+		assertThat(result.count()).isEqualTo(502);
+		assertThat(result.truncated()).isTrue();
+		assertThat(result.pieces()).hasSize(AnalyticsService.MAX_PIECES);
+		assertThat(result.pieces().getFirst().contribution()).isEqualByComparingTo("500.00");
+		// 1 + … + 500, plus the dinner's 500, less the 199 refund.
+		assertThat(result.total()).isEqualByComparingTo("125551.00");
+	}
+
+	@Test
+	void onlySumsOfMoneyCanBeOpenedUp() {
+		for (String metric : List.of("savings_rate", "investment_rate", "transaction_count", "spend_count",
+				"average_spend")) {
+			assertThatThrownBy(() -> pieces(metric, Map.of(), SEP_1, SEP_30)).isInstanceOf(InvalidQueryException.class)
+				.hasMessageStartingWith("\"" + metric + "\" isn't a sum of money");
+		}
+		assertThatThrownBy(() -> pieces("profit", Map.of(), SEP_1, SEP_30)).isInstanceOf(InvalidQueryException.class)
+			.hasMessage("Unknown metric \"profit\". Use one of: spending, income, invested, invested_in, invested_out, lent");
+		assertThatThrownBy(() -> service.pieces(new PiecesRequest(null, null, SEP_1, SEP_30)))
+			.isInstanceOf(InvalidQueryException.class)
+			.hasMessageStartingWith("Ask for one metric");
+		assertThatThrownBy(() -> pieces("spending", Map.of("month", List.of("2026-09")), SEP_1, SEP_30))
+			.isInstanceOf(InvalidQueryException.class)
+			.hasMessage("Filter time with \"from\" and \"to\" rather than \"month\"");
+		assertThatThrownBy(() -> service.pieces(new PiecesRequest("spending", null, SEP_30, SEP_1)))
+			.isInstanceOf(InvalidQueryException.class)
+			.hasMessage("\"from\" (2026-09-30) must not be after \"to\" (2026-09-01)");
+	}
+
+	private PieceList pieces(String metric, Map<String, List<String>> filters, LocalDate from, LocalDate to) {
+		return service.pieces(new PiecesRequest(metric, filters, from, to));
 	}
 
 	private QueryResult query(List<String> metrics, List<String> dimensions, Map<String, List<String>> filters,

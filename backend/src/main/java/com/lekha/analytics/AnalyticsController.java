@@ -21,4 +21,10 @@ class AnalyticsController {
 		return service.query(request);
 	}
 
+	/** The transactions behind one money figure, so a number on the dashboard can be opened up and checked. */
+	@PostMapping("/pieces")
+	PieceList pieces(@RequestBody PiecesRequest request) {
+		return service.pieces(request);
+	}
+
 }

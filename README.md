@@ -50,6 +50,10 @@ Banking apps show you *cash flow*: money in and money out. That's not the same a
 - **Breakdowns that drill down:** spending by category, then sub-category, then the individual transactions behind
   a number. You can also break it down by account or payment mode, and combine them (weekend food spending by card
   versus UPI).
+- **Every number opens up.** Click a total, a category, a day, a part of the month or a day of the week to see the
+  transactions that make it up, biggest first. The list always adds up to the number you clicked: refunds subtract,
+  and a split transaction shows only its share. Spot one in the wrong place, click it, re-classify it right there, and
+  the whole dashboard updates.
 - **Any granularity:** daily, weekly, monthly, quarterly or yearly trends, with empty periods shown as zero rather than
   skipped.
 - Every figure is an exact server-side aggregate of your allocations, so dashboard totals always match the ledger.
@@ -88,6 +92,10 @@ POST /api/v1/analytics/query
   excluding transfers, money lent and investments.
 - **Bounded.** At most three dimensions, one time grain, and a capped row count and date range, so no query can grow
   unbounded.
+- **Drill-down from the same definitions.** `POST /api/v1/analytics/pieces` takes one money metric with the same
+  filters and lists the allocation pieces behind it. It reuses the query's joins and conditions, and its total is the
+  metric's own SQL, so the list can never disagree with the chart. Rates and counts aren't a sum of money, so they
+  can't be opened up. `"none"` as a category filter means "no category".
 
 ### AI features
 
@@ -206,6 +214,7 @@ erDiagram
 | `GET` / `POST` | `/api/v1/accounts` | List and add accounts |
 | `POST` | `/api/v1/accounts/{id}/statements` | Import a statement PDF (multipart) |
 | `GET` | `/api/v1/transactions?from=&to=&accountId=` | Transactions with allocations and totals |
+| `GET` | `/api/v1/transactions/{id}` | One transaction with its classification |
 | `PUT` | `/api/v1/transactions/{id}/allocations` | Classify or split a transaction (replaces the whole set) |
 | `GET` | `/api/v1/ai/status` | Whether the model is ready, what it's doing, and the last test's results |
 | `POST` | `/api/v1/ai/suggestions` | Start suggesting for every unclassified transaction, in the background |
@@ -213,6 +222,7 @@ erDiagram
 | `POST` | `/api/v1/ai/stop` | Stop the running job after its current batch |
 | `GET` / `POST` / `PATCH` / `DELETE` | `/api/v1/categories` | Manage the category tree |
 | `POST` | `/api/v1/analytics/query` | Any metrics grouped and filtered by any dimensions (the semantic layer) |
+| `POST` | `/api/v1/analytics/pieces` | The transactions behind one money figure, biggest first |
 | `GET` | `/api/v1/insights/anomalies` | Anomaly alerts for a period |
 | `GET` | `/api/v1/insights/summary?month=` | AI-written summary of a month |
 

@@ -1,4 +1,5 @@
 import { apiPost } from "./client";
+import type { AllocationKind } from "./transactions";
 
 export type MetricName =
   | "spending"
@@ -60,6 +61,55 @@ interface QueryResponse {
   columns: string[];
   rows: (string | number | null)[][];
   unclassifiedCount: number;
+}
+
+/** Metrics that are a sum of money, so the pieces behind them can be listed. Rates and counts can't. */
+export type DrillableMetric = Extract<MetricName, "spending" | "income" | "invested" | "invested_in" | "invested_out" | "lent">;
+
+/** Body of POST /api/v1/analytics/pieces. Mirrors PiecesRequest.java. */
+export interface PiecesQuery {
+  metric: DrillableMetric;
+  /** As in a query; `category: ["none"]` is what has no category. */
+  filters?: Partial<Record<DimensionName, string[]>>;
+  from: string;
+  to: string;
+}
+
+/** One allocation piece behind a figure. Mirrors PieceList.Piece. */
+export interface Piece {
+  id: string;
+  transactionId: string;
+  transactionDate: string;
+  /** The purchase's date for a refund linked to one, which is when the figure counts it. */
+  reportedOn: string;
+  description: string;
+  transactionAmount: number;
+  paymentMode: string | null;
+  accountId: string;
+  account: string;
+  kind: AllocationKind;
+  categoryId: string | null;
+  /** "Food › Delivery" for a sub-category. */
+  category: string | null;
+  note: string | null;
+  refundOf: string | null;
+  /** What it adds to the figure; negative for a refund in spending. */
+  contribution: number;
+  /** The transaction has other pieces too. */
+  split: boolean;
+}
+
+export interface PieceList {
+  /** The same number the dashboard shows. */
+  total: number;
+  count: number;
+  /** Only the biggest pieces were sent. */
+  truncated: boolean;
+  pieces: Piece[];
+}
+
+export function listPieces(query: PiecesQuery, signal?: AbortSignal): Promise<PieceList> {
+  return apiPost<PiecesQuery, PieceList>("/analytics/pieces", query, signal);
 }
 
 export async function queryAnalytics<M extends MetricName, D extends DimensionName = never>(

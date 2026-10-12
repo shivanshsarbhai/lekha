@@ -121,6 +121,28 @@ class TransactionControllerTest {
 	}
 
 	@Test
+	void getReturnsOneTransactionAsTheListShowsIt() {
+		UUID id = UUID.fromString("22222222-2222-2222-2222-222222222222");
+		Transaction rent = new Transaction(id, ACCOUNT_ID, LocalDate.of(2026, 9, 4), null, "Rent",
+				new BigDecimal("-34000.00"), null, null, Map.of(), Instant.parse("2026-10-01T10:00:00Z"));
+		given(service.get(id)).willReturn(new ListedTransaction(rent, List.of()));
+
+		var response = assertThat(mvc.get().uri("/api/v1/transactions/{id}", id)).hasStatusOk().bodyJson();
+
+		response.extractingPath("$.id").isEqualTo(id.toString());
+		response.extractingPath("$.description").isEqualTo("Rent");
+		response.extractingPath("$.allocations").asArray().isEmpty();
+	}
+
+	@Test
+	void getReturns404ForAnUnknownTransaction() {
+		UUID id = UUID.fromString("22222222-2222-2222-2222-222222222222");
+		given(service.get(id)).willThrow(new TransactionNotFoundException(id));
+
+		assertThat(mvc.get().uri("/api/v1/transactions/{id}", id)).hasStatus(HttpStatus.NOT_FOUND);
+	}
+
+	@Test
 	void updateReturns400WithTheReasonForAnInvalidEdit() {
 		UUID id = UUID.fromString("22222222-2222-2222-2222-222222222222");
 		given(service.update(id, LocalDate.of(2026, 9, 4), "Rent", new BigDecimal("0")))

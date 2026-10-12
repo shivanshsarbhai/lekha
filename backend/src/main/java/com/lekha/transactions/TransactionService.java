@@ -76,6 +76,12 @@ public class TransactionService {
 				(int) listed.stream().filter(transaction -> !transaction.isClassified()).count());
 	}
 
+	/** One transaction as {@link #list} shows it, for opening it from somewhere else, such as a dashboard figure. */
+	ListedTransaction get(UUID id) {
+		Transaction transaction = repository.findById(id).orElseThrow(() -> new TransactionNotFoundException(id));
+		return withClassification(List.of(transaction)).getFirst();
+	}
+
 	/**
 	 * Purchases the refund could be linked to: classified expenses with money left to refund, from up to 120 days
 	 * before it. {@code search} narrows them by description.

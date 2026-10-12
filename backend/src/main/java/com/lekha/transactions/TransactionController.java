@@ -32,6 +32,11 @@ class TransactionController {
 		return service.list(accountId, from, to);
 	}
 
+	@GetMapping("/{id}")
+	ListedTransaction get(@PathVariable UUID id) {
+		return service.get(id);
+	}
+
 	@GetMapping("/{id}/refund-candidates")
 	List<RefundCandidate> refundCandidates(@PathVariable UUID id, @RequestParam(required = false) @Nullable String search) {
 		return service.refundCandidates(id, search);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   queryAnalytics,
   type AnalyticsQuery,
@@ -6,6 +6,7 @@ import {
   type DimensionName,
   type MetricName,
 } from "../../api/analytics";
+import { useDataVersion } from "./drill";
 
 export type AnalyticsState<M extends MetricName, D extends DimensionName> =
   | { status: "loading" }
@@ -22,10 +23,14 @@ export function useAnalyticsQuery<M extends MetricName, D extends DimensionName 
   const [state, setState] = useState<AnalyticsState<M, D>>({ status: "loading" });
   // Callers build a new query object on every render; comparing it as text re-runs only when the question changes.
   const key = JSON.stringify(query);
+  const version = useDataVersion();
+  const shownKey = useRef<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    setState({ status: "loading" });
+    // A new question shows loading; the same one asked again after a re-classification keeps the old figures up.
+    if (shownKey.current !== key) setState({ status: "loading" });
+    shownKey.current = key;
 
     queryAnalytics(JSON.parse(key) as AnalyticsQuery<M, D>, controller.signal)
       .then((result) => setState({ status: "success", result }))
@@ -35,7 +40,7 @@ export function useAnalyticsQuery<M extends MetricName, D extends DimensionName 
       });
 
     return () => controller.abort();
-  }, [key]);
+  }, [key, version]);
 
   return state;
 }

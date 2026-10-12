@@ -119,6 +119,11 @@ export function listTransactions(filter: TransactionFilter, signal?: AbortSignal
   return apiGet<TransactionList>(`/transactions?${params.toString()}`, signal);
 }
 
+/** One transaction exactly as the list shows it, with its classification. */
+export function getTransaction(id: string, signal?: AbortSignal): Promise<Transaction> {
+  return apiGet<Transaction>(`/transactions/${id}`, signal);
+}
+
 /** Body of PUT /api/v1/transactions/{id}. Mirrors UpdateTransactionRequest.java; every field is required. */
 export interface TransactionEdit {
   transactionDate: string;
